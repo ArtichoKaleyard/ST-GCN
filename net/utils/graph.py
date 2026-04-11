@@ -22,8 +22,8 @@ class Graph:
         self.hop_dis = get_hop_distance(self.num_node, self.edge, max_hop=max_hop)
         self.get_adjacency(strategy)
 
-    def __str__(self) -> np.ndarray:
-        return self.A
+    def __str__(self) -> str:
+        return str(self.A)
 
     def get_edge(self, layout: str) -> None:
         """按布局构建边关系。"""

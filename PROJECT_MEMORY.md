@@ -23,5 +23,8 @@
 ## 当前已知缺陷 / 未完成验证
 
 - `demo_old`、`demo`、`demo_offline` 还没有在真实 OpenPose 环境下做端到端运行验证；当前只有代码级迁移、参数解析和导入级保证。
+- `demo_offline` 在最初的 modern 重写里曾误引入两处与官方不一致的 tracker 行为：`get_skeleton_sequence()` 对 trace 按分数排序并截断到前 2 人，以及 `get_dis()` 使用了对角线尺度 `sqrt(w^2 + h^2)`。这两处现已回滚到官方语义；后续若再动 demo 逻辑，必须先明确这是兼容修复还是有意行为变更。
+- `DemoOffline.pose_estimation()` 当前已改为在 OpenPose Python API 缺失时显式返回 `None`，`start()` 会抛出清晰异常而不是沿用官方版的隐式解包失败；这属于失败路径诊断改进，不影响成功路径。
+- `Graph.__str__` 已从返回 `np.ndarray` 对象改为返回字符串，属于纯代码卫生修复，不影响图构造与模型计算。
 - 与官方实现的严格数值等价性，目前只验证到了 `eval()` 路径；`train()` 态下出现数值不完全一致主要来自 dropout / BatchNorm 的训练时随机性与状态更新，不应直接解读为结构偏离，但也还没有做更细的逐层训练态对照。
 - 当前还没有用官方预训练权重做一次完整的 `recognition --phase test` 回归，因此旧 checkpoint 的加载语义虽然保留，仍缺少一次真实数据集上的端到端结果确认。

@@ -24,7 +24,10 @@ class DemoOffline(IO):
         with open(label_name_path, encoding="utf-8") as file_obj:
             self.label_name = [line.rstrip() for line in file_obj.readlines()]
 
-        video, data_numpy = self.pose_estimation()
+        pose_result = self.pose_estimation()
+        if pose_result is None:
+            raise RuntimeError("OpenPose 初始化失败，无法生成离线 demo 所需的骨架序列。")
+        video, data_numpy = pose_result
         data = torch.from_numpy(data_numpy).unsqueeze(0).float().to(self.dev).detach()
 
         voting_label_name, video_label_name, _output, intensity = self.predict(data)
@@ -77,7 +80,7 @@ class DemoOffline(IO):
             self.arg.height,
         )
 
-    def pose_estimation(self) -> tuple[list[np.ndarray], np.ndarray]:
+    def pose_estimation(self) -> tuple[list[np.ndarray], np.ndarray] | None:
         """执行 OpenPose 与简单跟踪。"""
         if self.arg.openpose is not None:
             sys.path.append(f"{self.arg.openpose}/python")
@@ -189,7 +192,7 @@ class naive_pose_tracker:
 
         self.latest_frame = current_frame
 
-    def get_skeleton_sequence(self) -> np.ndarray:
+    def get_skeleton_sequence(self) -> np.ndarray | None:
         """生成 ST-GCN 输入序列。"""
         valid_trace_index = []
         for trace_index, (_trace, latest_frame) in enumerate(self.trace_info):
@@ -208,9 +211,7 @@ class naive_pose_tracker:
             beg = end - len(d)
             data[:, beg:end, :, trace_index] = d.transpose((2, 0, 1))
 
-        sort_index = (-data[2, :, :, :].sum(axis=1).sum(axis=0)).argsort(axis=0)
-        data = data[:, :, :, sort_index]
-        return data[:, :, :, 0:2]
+        return data
 
     def get_dis(self, trace: np.ndarray, pose: np.ndarray) -> tuple[float, bool]:
         """计算轨迹末帧与当前姿态的距离。"""
@@ -219,7 +220,7 @@ class naive_pose_tracker:
 
         mean_dis = ((((last_pose_xy - curr_pose_xy) ** 2).sum(axis=1)) ** 0.5).mean()
         wh = last_pose_xy.max(axis=0) - last_pose_xy.min(axis=0)
-        scale = (wh[0] ** 2 + wh[1] ** 2) ** 0.5 + 0.0001
+        scale = (wh[0] * wh[1]) ** 0.5 + 0.0001
         is_close = mean_dis < scale * self.max_frame_dis
         return mean_dis, is_close
 
