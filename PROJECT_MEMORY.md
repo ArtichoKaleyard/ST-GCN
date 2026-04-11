@@ -19,3 +19,9 @@
   - `eval()` 下单流前向输出完全一致
   - `eval()` 下 `extract_feature` 的输出与特征张量完全一致
   - 双流模型的实质性变化仅是把原版写死的 `torch.cuda.FloatTensor(...)` 改成了 device-agnostic 写法，数学公式未改
+
+## 当前已知缺陷 / 未完成验证
+
+- `demo_old`、`demo`、`demo_offline` 还没有在真实 OpenPose 环境下做端到端运行验证；当前只有代码级迁移、参数解析和导入级保证。
+- 与官方实现的严格数值等价性，目前只验证到了 `eval()` 路径；`train()` 态下出现数值不完全一致主要来自 dropout / BatchNorm 的训练时随机性与状态更新，不应直接解读为结构偏离，但也还没有做更细的逐层训练态对照。
+- 当前还没有用官方预训练权重做一次完整的 `recognition --phase test` 回归，因此旧 checkpoint 的加载语义虽然保留，仍缺少一次真实数据集上的端到端结果确认。
