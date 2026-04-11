@@ -1,0 +1,27 @@
+[project]
+name = "st-gcn-modern"
+version = "0.1.0"
+description = "Modernized ST-GCN with preserved public behavior"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pyyaml",
+    "numpy",
+    "h5py",
+    "opencv-python",
+    "imageio",
+    "scikit-video",
+    "torch",
+    "torchvision",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["feeder*", "net*", "processor*", "tools*", "torchlight*"]

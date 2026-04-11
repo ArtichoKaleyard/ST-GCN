@@ -1,66 +1,69 @@
-import numpy as np
+"""feeder 的数据增强与统计工具。"""
+
+from __future__ import annotations
+
 import random
 
+import numpy as np
 
-def downsample(data_numpy, step, random_sample=True):
-    # input: C,T,V,M
+
+def downsample(data_numpy: np.ndarray, step: int, random_sample: bool = True) -> np.ndarray:
+    """时间维下采样。"""
     begin = np.random.randint(step) if random_sample else 0
     return data_numpy[:, begin::step, :, :]
 
 
-def temporal_slice(data_numpy, step):
-    # input: C,T,V,M
+def temporal_slice(data_numpy: np.ndarray, step: int) -> np.ndarray:
+    """按固定步长切分时间维。"""
     C, T, V, M = data_numpy.shape
-    return data_numpy.reshape(C, T / step, step, V, M).transpose(
-        (0, 1, 3, 2, 4)).reshape(C, T / step, V, step * M)
+    return data_numpy.reshape(C, T // step, step, V, M).transpose((0, 1, 3, 2, 4)).reshape(
+        C, T // step, V, step * M
+    )
 
 
-def mean_subtractor(data_numpy, mean):
-    # input: C,T,V,M
-    # naive version
+def mean_subtractor(data_numpy: np.ndarray, mean: float) -> np.ndarray | None:
+    """对有效帧减去均值。"""
     if mean == 0:
-        return
-    C, T, V, M = data_numpy.shape
+        return None
     valid_frame = (data_numpy != 0).sum(axis=3).sum(axis=2).sum(axis=0) > 0
-    begin = valid_frame.argmax()
     end = len(valid_frame) - valid_frame[::-1].argmax()
     data_numpy[:, :end, :, :] = data_numpy[:, :end, :, :] - mean
     return data_numpy
 
 
-def auto_pading(data_numpy, size, random_pad=False):
+def auto_pading(data_numpy: np.ndarray, size: int, random_pad: bool = False) -> np.ndarray:
+    """不足长度时自动补零。"""
     C, T, V, M = data_numpy.shape
     if T < size:
         begin = random.randint(0, size - T) if random_pad else 0
         data_numpy_paded = np.zeros((C, size, V, M))
-        data_numpy_paded[:, begin:begin + T, :, :] = data_numpy
+        data_numpy_paded[:, begin : begin + T, :, :] = data_numpy
         return data_numpy_paded
-    else:
-        return data_numpy
+    return data_numpy
 
 
-def random_choose(data_numpy, size, auto_pad=True):
-    # input: C,T,V,M
-    C, T, V, M = data_numpy.shape
+def random_choose(data_numpy: np.ndarray, size: int, auto_pad: bool = True) -> np.ndarray:
+    """随机裁剪序列。"""
+    _, T, _, _ = data_numpy.shape
     if T == size:
         return data_numpy
-    elif T < size:
+    if T < size:
         if auto_pad:
             return auto_pading(data_numpy, size, random_pad=True)
-        else:
-            return data_numpy
-    else:
-        begin = random.randint(0, T - size)
-        return data_numpy[:, begin:begin + size, :, :]
+        return data_numpy
+    begin = random.randint(0, T - size)
+    return data_numpy[:, begin : begin + size, :, :]
 
 
-def random_move(data_numpy,
-                angle_candidate=[-10., -5., 0., 5., 10.],
-                scale_candidate=[0.9, 1.0, 1.1],
-                transform_candidate=[-0.2, -0.1, 0.0, 0.1, 0.2],
-                move_time_candidate=[1]):
-    # input: C,T,V,M
-    C, T, V, M = data_numpy.shape
+def random_move(
+    data_numpy: np.ndarray,
+    angle_candidate: list[float] = [-10.0, -5.0, 0.0, 5.0, 10.0],
+    scale_candidate: list[float] = [0.9, 1.0, 1.1],
+    transform_candidate: list[float] = [-0.2, -0.1, 0.0, 0.1, 0.2],
+    move_time_candidate: list[int] = [1],
+) -> np.ndarray:
+    """执行连续随机仿射扰动。"""
+    _, T, V, M = data_numpy.shape
     move_time = random.choice(move_time_candidate)
     node = np.arange(0, T, T * 1.0 / move_time).round().astype(int)
     node = np.append(node, T)
@@ -76,21 +79,16 @@ def random_move(data_numpy,
     t_x = np.zeros(T)
     t_y = np.zeros(T)
 
-    # linspace
     for i in range(num_node - 1):
-        a[node[i]:node[i + 1]] = np.linspace(
-            A[i], A[i + 1], node[i + 1] - node[i]) * np.pi / 180
-        s[node[i]:node[i + 1]] = np.linspace(S[i], S[i + 1],
-                                             node[i + 1] - node[i])
-        t_x[node[i]:node[i + 1]] = np.linspace(T_x[i], T_x[i + 1],
-                                               node[i + 1] - node[i])
-        t_y[node[i]:node[i + 1]] = np.linspace(T_y[i], T_y[i + 1],
-                                               node[i + 1] - node[i])
+        a[node[i] : node[i + 1]] = np.linspace(A[i], A[i + 1], node[i + 1] - node[i]) * np.pi / 180
+        s[node[i] : node[i + 1]] = np.linspace(S[i], S[i + 1], node[i + 1] - node[i])
+        t_x[node[i] : node[i + 1]] = np.linspace(T_x[i], T_x[i + 1], node[i + 1] - node[i])
+        t_y[node[i] : node[i + 1]] = np.linspace(T_y[i], T_y[i + 1], node[i + 1] - node[i])
 
-    theta = np.array([[np.cos(a) * s, -np.sin(a) * s],
-                      [np.sin(a) * s, np.cos(a) * s]])
+    theta = np.array(
+        [[np.cos(a) * s, -np.sin(a) * s], [np.sin(a) * s, np.cos(a) * s]]
+    )
 
-    # perform transformation
     for i_frame in range(T):
         xy = data_numpy[0:2, i_frame, :, :]
         new_xy = np.dot(theta[:, :, i_frame], xy.reshape(2, -1))
@@ -101,9 +99,9 @@ def random_move(data_numpy,
     return data_numpy
 
 
-def random_shift(data_numpy):
-    # input: C,T,V,M
-    C, T, V, M = data_numpy.shape
+def random_shift(data_numpy: np.ndarray) -> np.ndarray:
+    """在时间维随机平移有效帧。"""
+    _, T, _, _ = data_numpy.shape
     data_shift = np.zeros(data_numpy.shape)
     valid_frame = (data_numpy != 0).sum(axis=3).sum(axis=2).sum(axis=0) > 0
     begin = valid_frame.argmax()
@@ -111,62 +109,53 @@ def random_shift(data_numpy):
 
     size = end - begin
     bias = random.randint(0, T - size)
-    data_shift[:, bias:bias + size, :, :] = data_numpy[:, begin:end, :, :]
+    data_shift[:, bias : bias + size, :, :] = data_numpy[:, begin:end, :, :]
 
     return data_shift
 
 
-def openpose_match(data_numpy):
+def openpose_match(data_numpy: np.ndarray) -> np.ndarray:
+    """匹配相邻帧中的人体实例。"""
     C, T, V, M = data_numpy.shape
-    assert (C == 3)
+    assert C == 3
     score = data_numpy[2, :, :, :].sum(axis=1)
-    # the rank of body confidence in each frame (shape: T-1, M)
-    rank = (-score[0:T - 1]).argsort(axis=1).reshape(T - 1, M)
+    rank = (-score[0 : T - 1]).argsort(axis=1).reshape(T - 1, M)
 
-    # data of frame 1
-    xy1 = data_numpy[0:2, 0:T - 1, :, :].reshape(2, T - 1, V, M, 1)
-    # data of frame 2
+    xy1 = data_numpy[0:2, 0 : T - 1, :, :].reshape(2, T - 1, V, M, 1)
     xy2 = data_numpy[0:2, 1:T, :, :].reshape(2, T - 1, V, 1, M)
-    # square of distance between frame 1&2 (shape: T-1, M, M)
-    distance = ((xy2 - xy1)**2).sum(axis=2).sum(axis=0)
+    distance = ((xy2 - xy1) ** 2).sum(axis=2).sum(axis=0)
 
-    # match pose
     forward_map = np.zeros((T, M), dtype=int) - 1
     forward_map[0] = range(M)
     for m in range(M):
-        choose = (rank == m)
+        choose = rank == m
         forward = distance[choose].argmin(axis=1)
         for t in range(T - 1):
             distance[t, :, forward[t]] = np.inf
         forward_map[1:][choose] = forward
-    assert (np.all(forward_map >= 0))
+    assert np.all(forward_map >= 0)
 
-    # string data
     for t in range(T - 1):
         forward_map[t + 1] = forward_map[t + 1][forward_map[t]]
 
-    # generate data
     new_data_numpy = np.zeros(data_numpy.shape)
     for t in range(T):
-        new_data_numpy[:, t, :, :] = data_numpy[:, t, :, forward_map[
-            t]].transpose(1, 2, 0)
+        new_data_numpy[:, t, :, :] = data_numpy[:, t, :, forward_map[t]].transpose(1, 2, 0)
     data_numpy = new_data_numpy
 
-    # score sort
     trace_score = data_numpy[2, :, :, :].sum(axis=1).sum(axis=0)
     rank = (-trace_score).argsort()
-    data_numpy = data_numpy[:, :, :, rank]
-
-    return data_numpy
+    return data_numpy[:, :, :, rank]
 
 
-def top_k_by_category(label, score, top_k):
+def top_k_by_category(label: np.ndarray, score: np.ndarray, top_k: int) -> list[float]:
+    """按类别统计 top-k 准确率。"""
     instance_num, class_num = score.shape
     rank = score.argsort()
-    hit_top_k = [[] for i in range(class_num)]
+    hit_top_k = [[] for _ in range(class_num)]
     for i in range(instance_num):
-        l = label[i]
-        hit_top_k[l].append(l in rank[i, -top_k:])
+        class_index = label[i]
+        hit_top_k[class_index].append(class_index in rank[i, -top_k:])
 
     accuracy_list = []
     for hit_per_category in hit_top_k:
@@ -177,7 +166,8 @@ def top_k_by_category(label, score, top_k):
     return accuracy_list
 
 
-def calculate_recall_precision(label, score):
+def calculate_recall_precision(label: np.ndarray, score: np.ndarray) -> tuple[list[float], list[float]]:
+    """计算逐类召回率与精确率。"""
     instance_num, class_num = score.shape
     rank = score.argsort()
     confusion_matrix = np.zeros([class_num, class_num])
@@ -187,8 +177,8 @@ def calculate_recall_precision(label, score):
         pred_l = rank[i, -1]
         confusion_matrix[true_l][pred_l] += 1
 
-    precision = []
-    recall = []
+    precision: list[float] = []
+    recall: list[float] = []
 
     for i in range(class_num):
         true_p = confusion_matrix[i][i]

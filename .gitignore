@@ -5,6 +5,8 @@ data
 config_v0/*
 backup/*
 .vscode
+.idea/
+.codex/
 model/*
 *.pt
 *.caffemodel

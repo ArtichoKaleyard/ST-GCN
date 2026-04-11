@@ -1,33 +1,36 @@
 #!/usr/bin/env python
+"""ST-GCN 命令行入口。
+
+保持官方仓库的子命令结构与参数解析行为不变，只将实现整理为更现代、
+更易维护的 Python 写法。
+"""
+
 import argparse
 import sys
 
-# torchlight
 import torchlight
 from torchlight import import_class
 
-if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Processor collection')
+def build_processor_registry() -> dict[str, type]:
+    """构建可用处理器注册表。"""
+    return {
+        "recognition": import_class("processor.recognition.REC_Processor"),
+        "demo_old": import_class("processor.demo_old.Demo"),
+        "demo": import_class("processor.demo_realtime.DemoRealtime"),
+        "demo_offline": import_class("processor.demo_offline.DemoOffline"),
+    }
 
-    # region register processor yapf: disable
-    processors = dict()
-    processors['recognition'] = import_class('processor.recognition.REC_Processor')
-    processors['demo_old'] = import_class('processor.demo_old.Demo')
-    processors['demo'] = import_class('processor.demo_realtime.DemoRealtime')
-    processors['demo_offline'] = import_class('processor.demo_offline.DemoOffline')
-    #endregion yapf: enable
 
-    # add sub-parser
-    subparsers = parser.add_subparsers(dest='processor')
-    for k, p in processors.items():
-        subparsers.add_parser(k, parents=[p.get_parser()])
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="处理器集合")
+    processors = build_processor_registry()
 
-    # read arguments
+    subparsers = parser.add_subparsers(dest="processor")
+    for name, processor in processors.items():
+        subparsers.add_parser(name, parents=[processor.get_parser()])
+
     arg = parser.parse_args()
-
-    # start
-    Processor = processors[arg.processor]
-    p = Processor(sys.argv[2:])
-
-    p.start()
+    processor_cls = processors[arg.processor]
+    processor = processor_cls(sys.argv[2:])
+    processor.start()
