@@ -66,21 +66,32 @@ class Processor(IO):
     def show_epoch_info(self) -> None:
         """打印轮级别统计信息。"""
         for key, value in self.epoch_info.items():
-            self.io.print_log(f"\t{key}: {value}")
+            self.io.info(f"\t{key}: {value}")
         if self.arg.pavi_log:
             self.io.log("train", self.meta_info["iter"], self.epoch_info)
 
+    @staticmethod
+    def _format_metric_value(value: Any) -> str:
+        """将日志指标格式化为紧凑字符串。"""
+        if isinstance(value, float):
+            return f"{value:.4f}"
+        return str(value)
+
+    def get_iter_postfix(self) -> dict[str, str]:
+        """返回适合 tqdm postfix 的迭代指标。"""
+        return {
+            key: self._format_metric_value(value)
+            for key, value in self.iter_info.items()
+        }
+
     def show_iter_info(self) -> None:
-        """按设定间隔打印迭代信息。"""
+        """按设定间隔记录迭代信息。"""
         if self.meta_info["iter"] % self.arg.log_interval == 0:
             info = f"\tIter {self.meta_info['iter']} Done."
             for key, value in self.iter_info.items():
-                if isinstance(value, float):
-                    info += f" | {key}: {value:.4f}"
-                else:
-                    info += f" | {key}: {value}"
+                info += f" | {key}: {self._format_metric_value(value)}"
 
-            self.io.print_log(info)
+            self.io.debug(info)
 
             if self.arg.pavi_log:
                 self.io.log("train", self.meta_info["iter"], self.iter_info)
@@ -104,15 +115,15 @@ class Processor(IO):
 
     def start(self) -> None:
         """启动训练或评测流程。"""
-        self.io.print_log("Parameters:\n{}\n".format(str(vars(self.arg))))
+        self.io.info("Parameters:\n{}\n".format(str(vars(self.arg))))
 
         if self.arg.phase == "train":
             for epoch in range(self.arg.start_epoch, self.arg.num_epoch):
                 self.meta_info["epoch"] = epoch
 
-                self.io.print_log(f"Training epoch: {epoch}")
+                self.io.info(f"Training epoch: {epoch}")
                 self.train()
-                self.io.print_log("Done.")
+                self.io.success(f"Training epoch {epoch} done.")
 
                 if ((epoch + 1) % self.arg.save_interval == 0) or (
                     epoch + 1 == self.arg.num_epoch
@@ -123,18 +134,18 @@ class Processor(IO):
                 if ((epoch + 1) % self.arg.eval_interval == 0) or (
                     epoch + 1 == self.arg.num_epoch
                 ):
-                    self.io.print_log(f"Eval epoch: {epoch}")
+                    self.io.info(f"Eval epoch: {epoch}")
                     self.test()
-                    self.io.print_log("Done.")
+                    self.io.success(f"Eval epoch {epoch} done.")
         elif self.arg.phase == "test":
             if self.arg.weights is None:
                 raise ValueError("Please appoint --weights.")
-            self.io.print_log(f"Model:   {self.arg.model}.")
-            self.io.print_log(f"Weights: {self.arg.weights}.")
+            self.io.info(f"Model:   {self.arg.model}.")
+            self.io.info(f"Weights: {self.arg.weights}.")
 
-            self.io.print_log("Evaluation Start:")
+            self.io.info("Evaluation Start:")
             self.test()
-            self.io.print_log("Done.\n")
+            self.io.success("Evaluation done.\n")
 
             if self.arg.save_result:
                 result_dict = dict(

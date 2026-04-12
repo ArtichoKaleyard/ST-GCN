@@ -46,6 +46,34 @@ uv sync
 - 代码设计上保留旧接口兼容，但不承诺继续支持所有旧环境组合
 - 具体 CUDA 版本应以你的驱动和 PyTorch 官方 wheel 对应关系为准
 
+## 训练结果可视化
+
+如果你已经完成训练，并希望对比两次正式训练的 loss / Top-1 / Top-5 / 学习率日程，可以使用仓库内置脚本：
+
+```bash
+.venv/bin/python tools/plot_training_comparison.py
+```
+
+默认会对比当前仓库里的两组 NTU xsub 正式训练结果：
+
+- `work_dir/recognition/ntu-xsub/ST_GCN_fp32_bs16_lr0025_e80`
+- `work_dir/recognition/ntu-xsub/ST_GCN_fp32_bs16_lr0025_e80_step10x`
+
+图像会导出到：
+
+- `work_dir/figures/ntu_xsub_training_comparison.png`
+- `work_dir/figures/ntu_xsub_training_comparison.pdf`
+
+如果要换成别的两组训练结果，可显式传入两组 `--run LABEL WORK_DIR`：
+
+```bash
+.venv/bin/python tools/plot_training_comparison.py \
+  --run "Repo Default" work_dir/recognition/ntu-xsub/ST_GCN_fp32_bs16_lr0025_e80 \
+  --run "Paper Schedule" work_dir/recognition/ntu-xsub/ST_GCN_fp32_bs16_lr0025_e80_step10x
+```
+
+脚本会同时兼容当前仓库里旧版时间戳日志与 Herald 日志格式，但要求目标目录下至少存在 `config.yaml` 和 `log.txt`。
+
 ## 旧版说明
 
 如果你想查看官方仓库原始说明与旧命令示例，请参考 [OLD_README.md](./OLD_README.md)。

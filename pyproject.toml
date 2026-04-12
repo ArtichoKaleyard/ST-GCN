@@ -13,6 +13,10 @@ dependencies = [
     "scikit-video",
     "torch",
     "torchvision",
+    "tqdm>=4.67.3",
+    "herald",
+    "matplotlib>=3.10.8",
+    "scienceplots>=2.2.1",
 ]
 
 [build-system]
@@ -25,3 +29,6 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["feeder*", "net*", "processor*", "tools*", "torchlight*"]
+
+[tool.uv.sources]
+herald = { git = "https://github.com/ArtichoKaleyard/Herald" }

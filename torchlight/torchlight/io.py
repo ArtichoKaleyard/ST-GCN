@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import os
+import atexit
 import pickle
 import sys
 import time
@@ -14,6 +14,10 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from herald import ConsoleHandler
+from herald import FileHandler
+from herald import LogManager
+from herald import get_logger
 import numpy as np
 import torch
 import yaml
@@ -30,6 +34,8 @@ class IO:
     旧版保持一致，以确保处理器代码无需调整外部接口。
     """
 
+    _shutdown_registered = False
+
     def __init__(self, work_dir: str, save_log: bool = True, print_log: bool = True):
         self.work_dir = work_dir
         self.save_log = save_log
@@ -39,9 +45,56 @@ class IO:
         self.pavi_logger = None
         self.session_file: str | None = None
         self.model_text = ""
+        self.logger = self._build_logger()
 
     def log(self, *args: Any, **kwargs: Any) -> None:
         """兼容旧版接口，当前版本不执行任何实际日志上报。"""
+
+    def _build_logger(self):
+        """构建当前 IO 实例使用的 Herald logger。"""
+        log_dir = Path(self.work_dir)
+        if self.save_log:
+            log_dir.mkdir(parents=True, exist_ok=True)
+
+        logger_name = "stgcn_io"
+        if log_dir.name:
+            logger_name = f"stgcn_io_{log_dir.name}"
+
+        logger = get_logger(logger_name, level="debug")
+        if self.print_to_screen:
+            logger.add_handler(ConsoleHandler(level="info"))
+        if self.save_log:
+            logger.add_handler(FileHandler(log_dir / "log.txt", level="debug"))
+
+        if not IO._shutdown_registered:
+            atexit.register(LogManager.shutdown)
+            IO._shutdown_registered = True
+
+        return logger
+
+    def _emit(self, level: str, message: str) -> None:
+        """通过 Herald 按级别输出日志。"""
+        getattr(self.logger, level)(message, stacklevel=3)
+
+    def debug(self, message: str) -> None:
+        """输出 debug 级别日志。"""
+        self._emit("debug", message)
+
+    def info(self, message: str) -> None:
+        """输出 info 级别日志。"""
+        self._emit("info", message)
+
+    def success(self, message: str) -> None:
+        """输出 success 级别日志。"""
+        self._emit("success", message)
+
+    def warning(self, message: str) -> None:
+        """输出 warning 级别日志。"""
+        self._emit("warning", message)
+
+    def error(self, message: str) -> None:
+        """输出 error 级别日志。"""
+        self._emit("error", message)
 
     def load_model(self, model: str, **model_args: Any) -> torch.nn.Module:
         """按字符串路径导入并实例化模型。"""
@@ -62,7 +115,7 @@ class IO:
         if isinstance(ignore_weights, str):
             ignore_weights = [ignore_weights]
 
-        self.print_log(f"Load weights from {weights_path}.")
+        self.info(f"Load weights from {weights_path}.")
         loaded_weights = torch.load(weights_path, map_location="cpu")
         weights = OrderedDict(
             (key.split("module.")[-1], value.cpu())
@@ -76,12 +129,12 @@ class IO:
                     ignore_name.append(weight_name)
             for name in ignore_name:
                 weights.pop(name)
-                self.print_log(
+                self.info(
                     "Filter [{}] remove weights [{}].".format(ignored_prefix, name)
                 )
 
         for weight_name in weights:
-            self.print_log(f"Load weights [{weight_name}].")
+            self.debug(f"Load weights [{weight_name}].")
 
         try:
             model.load_state_dict(weights)
@@ -89,7 +142,7 @@ class IO:
             state = model.state_dict()
             diff = list(set(state.keys()).difference(set(weights.keys())))
             for missing_key in diff:
-                self.print_log(f"Can not find weights [{missing_key}].")
+                self.warning(f"Can not find weights [{missing_key}].")
             state.update(weights)
             model.load_state_dict(state)
         return model
@@ -114,7 +167,7 @@ class IO:
             for key, value in state_dict.items()
         )
         torch.save(weights, model_path)
-        self.print_log(f"The model has been saved as {model_path}.")
+        self.success(f"The model has been saved as {model_path}.")
 
     def save_arg(self, arg: argparse.Namespace) -> None:
         """保存最终命令行参数到工作目录。"""
@@ -126,15 +179,9 @@ class IO:
             yaml.dump(arg_dict, file_obj, default_flow_style=False, indent=4)
 
     def print_log(self, log_str: str, print_time: bool = True) -> None:
-        """打印并按需落盘日志。"""
-        if print_time:
-            log_str = time.strftime("[%m.%d.%y|%X] ", time.localtime()) + log_str
-
-        if self.print_to_screen:
-            print(log_str)
-        if self.save_log:
-            with Path(self.work_dir, "log.txt").open("a", encoding="utf-8") as file_obj:
-                print(log_str, file=file_obj)
+        """兼容旧版调用，按 info 级别输出日志。"""
+        del print_time
+        self.info(log_str)
 
     def init_timer(self, *name: str) -> None:
         """初始化分段计时器。"""
@@ -164,9 +211,9 @@ class IO:
             )
             for key, value in self.split_timer.items()
         }
-        self.print_log("Time consumption:")
+        self.info("Time consumption:")
         for key in proportion:
-            self.print_log(
+            self.info(
                 "\t[{}][{}]: {:.4f}".format(key, proportion[key], self.split_timer[key])
             )
 

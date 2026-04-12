@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm.auto import tqdm
 
 from torchlight import str2bool
 
@@ -77,7 +78,7 @@ class REC_Processor(Processor):
         rank = self.result.argsort()
         hit_top_k = [label in rank[i, -k:] for i, label in enumerate(self.label)]
         accuracy = sum(hit_top_k) * 1.0 / len(hit_top_k)
-        self.io.print_log("\tTop{}: {:.2f}%".format(k, 100 * accuracy))
+        self.io.info("\tTop{}: {:.2f}%".format(k, 100 * accuracy))
 
     def train(self) -> None:
         """训练一个 epoch。"""
@@ -86,7 +87,13 @@ class REC_Processor(Processor):
         loader = self.data_loader["train"]
         loss_value: list[float] = []
 
-        for data, label in loader:
+        progress = tqdm(
+            loader,
+            desc=f"Train {self.meta_info['epoch']}",
+            leave=False,
+            dynamic_ncols=True,
+        )
+        for data, label in progress:
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
 
@@ -98,8 +105,9 @@ class REC_Processor(Processor):
             self.optimizer.step()
 
             self.iter_info["loss"] = loss.item()
-            self.iter_info["lr"] = "{:.6f}".format(self.lr)
+            self.iter_info["lr"] = f"{self.lr:.6f}"
             loss_value.append(self.iter_info["loss"])
+            progress.set_postfix(self.get_iter_postfix(), refresh=False)
             self.show_iter_info()
             self.meta_info["iter"] += 1
 
@@ -115,7 +123,13 @@ class REC_Processor(Processor):
         result_frag: list[np.ndarray] = []
         label_frag: list[np.ndarray] = []
 
-        for data, label in loader:
+        progress = tqdm(
+            loader,
+            desc=f"Test {self.meta_info['epoch']}",
+            leave=False,
+            dynamic_ncols=True,
+        )
+        for data, label in progress:
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
 
@@ -127,6 +141,7 @@ class REC_Processor(Processor):
                 loss = self.loss(output, label)
                 loss_value.append(loss.item())
                 label_frag.append(label.cpu().numpy())
+                progress.set_postfix({"loss": f"{loss.item():.4f}"}, refresh=False)
 
         self.result = np.concatenate(result_frag)
         if evaluation:
