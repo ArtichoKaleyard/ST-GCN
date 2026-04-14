@@ -134,6 +134,13 @@ class Graph:
             for i, hop in enumerate(valid_hop):
                 A[i][self.hop_dis == hop] = normalize_adjacency[self.hop_dis == hop]
             self.A = A
+        elif strategy == "distance_subsetnorm":
+            A = np.zeros((len(valid_hop), self.num_node, self.num_node))
+            for i, hop in enumerate(valid_hop):
+                subset_adjacency = np.zeros((self.num_node, self.num_node))
+                subset_adjacency[self.hop_dis == hop] = 1
+                A[i] = normalize_digraph(subset_adjacency)
+            self.A = A
         elif strategy == "spatial":
             adjacency_list = []
             for hop in valid_hop:
