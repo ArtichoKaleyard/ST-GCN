@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 
 import numpy as np
 import torch
@@ -60,6 +61,9 @@ class REC_Processor(Processor):
             )
         else:
             raise ValueError()
+        self.grad_scaler = torch.amp.GradScaler(
+            "cuda", enabled=self.arg.amp and self.dev.type == "cuda"
+        )
 
     def adjust_lr(self) -> None:
         """保持原版 SGD 阶梯式学习率衰减。"""
@@ -97,12 +101,19 @@ class REC_Processor(Processor):
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
 
-            output = self.model(data)
-            loss = self.loss(output, label)
+            autocast_context = (
+                torch.amp.autocast("cuda", enabled=True)
+                if self.arg.amp and self.dev.type == "cuda"
+                else nullcontext()
+            )
+            with autocast_context:
+                output = self.model(data)
+                loss = self.loss(output, label)
 
             self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            self.grad_scaler.scale(loss).backward()
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
 
             self.iter_info["loss"] = loss.item()
             self.iter_info["lr"] = f"{self.lr:.6f}"
@@ -133,7 +144,12 @@ class REC_Processor(Processor):
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
 
-            with torch.no_grad():
+            autocast_context = (
+                torch.amp.autocast("cuda", enabled=True)
+                if self.arg.amp and self.dev.type == "cuda"
+                else nullcontext()
+            )
+            with torch.no_grad(), autocast_context:
                 output = self.model(data)
             result_frag.append(output.cpu().numpy())
 
@@ -183,6 +199,12 @@ class REC_Processor(Processor):
         )
         parser.add_argument(
             "--weight_decay", type=float, default=0.0001, help="优化器权重衰减"
+        )
+        parser.add_argument(
+            "--amp",
+            type=str2bool,
+            default=False,
+            help="是否启用 CUDA AMP 混合精度训练与评估",
         )
 
         return parser

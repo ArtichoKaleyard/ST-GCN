@@ -1,5 +1,6 @@
 #custom
 tmp*
+temp/
 work_dir/*
 data
 config_v0/*
