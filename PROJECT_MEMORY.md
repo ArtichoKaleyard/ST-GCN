@@ -76,3 +76,11 @@
 - Action/Command: `.venv/bin/python temp/audit_distance_partition.py`；新增 [config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml](/home/atk/PyCharm/ST-GCN/config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml)，并在真实环境里执行 `.venv/bin/python main.py recognition -c config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml` 做 15 epoch 短程探针。
 - Verification: 语义审计已排除子集脏边、support 不守恒和 tgcn 前向偏置；探针版 `distance_subsetnorm` 在 `epoch 4` 得到 `Top1=52.06% / Top5=82.77%`，首点仍低于原始 `distance_noimp` 的 `55.61% / 88.25%`；但到 `epoch 9` 时，`distance_subsetnorm` 提升到 `Top1=60.08% / Top5=88.82%`，显著高于原始 `distance_noimp` 在相同节点的 `41.18% / 74.59%`。这说明“先切分、再对子集独立归一化”明显缓解了中期验证塌陷，但没有把 `distance` 完全修好。
 - Follow-up: 后续若继续查这个问题，优先围绕“subset 独立归一化 + 其余数值平衡项”继续缩小范围，而不是再回到 adjacency shape、support 或 tgcn 前向这种已排除路径。当前新增的重要理解是：`distance_subsetnorm` 把 self subset 与 hop-1 subset 都各自列归一化到 `1`，导致合并后每列总权重从原始 `distance` 的 `1` 变成 `2`；在相同卷积权重下，第一层图卷积输出绝对均值约放大到原始 `distance` 的 `~2.05x`，整网各层激活长期维持 `~1.5x-2.0x`，最终 logits 仍高约 `13%`。这解释了为什么修复版首个验证点更差但中期更稳：它同时“放大了消息量”并“显著抬高了 self 分支权重”。
+
+## 2026-04-14 - 恢复 modern 初始重写中被压掉的重要说明
+- Context: 用户指出 `f623ac0` 那批 modern 初始重写虽然完成了 Python 3.12 / PyTorch 2.x 迁移，但把一部分高价值注释、形状说明和兼容语义说明压缩得过头，后续阅读和审计成本偏高。
+- Decision: 不改变任何外部接口或数值路径，只在 `main.py`、`net/`、`processor/`、`feeder/` 与 `torchlight/torchlight/io.py` 补回关键 docstring、张量形状说明、图分区语义说明，以及 checkpoint / CLI 兼容注释。
+- Why: 这类说明不是“代码美化”，而是 modern 分支判断“是否仍与官方实现等价”的重要证据。尤其是 ST-GCN 的 `(N,C,T,V,M)` 数据重排、`distance/spatial` 分区语义、双流 motion 定义，以及 `torchlight.IO` 的权重过滤兼容逻辑，单靠简短函数名不足以支撑长期维护。
+- Action/Command: 对照 `221c0e1` 官方基线与当前 modern 文件，恢复 `Model` / `st_gcn` / `ConvTemporalGraphical` / `Graph` / `Processor` / `REC_Processor` / feeder / `torchlight.IO` 等核心模块中的高价值说明，并执行 `python3 -m compileall main.py net processor feeder torchlight`。
+- Verification: 当前相关文件均已通过 `compileall`；本次修改只涉及注释、docstring 与说明性类型语义，没有改动模型结构、参数名、配置键名或张量计算路径。
+- Follow-up: 后续再做 modern 化整理时，涉及官方数学定义、张量布局、图构造、兼容加载或多阶段处理器调度的代码，默认不要把原版语义说明压缩成只剩一句短 docstring。

@@ -18,9 +18,13 @@ from .io import IO
 
 
 class Processor(IO):
-    """Base Processor。"""
+    """训练/测试处理器基类。
 
-    def __init__(self, argv: list[str] | None = None):
+    该类保留官方版本的阶段组织方式：`train()` / `test()` 负责单轮逻辑，
+    `start()` 负责 epoch 级调度、模型保存与评估触发。
+    """
+
+    def __init__(self, argv: list[str] | None = None) -> None:
         self.load_arg(argv)
         self.init_environment()
         self.load_model()
@@ -43,6 +47,9 @@ class Processor(IO):
     def load_data(self) -> None:
         """构建训练/测试数据加载器。"""
         feeder_cls = import_class(self.arg.feeder)
+
+        # 旧实现只把 `--debug` 自动注入训练 feeder；测试 feeder 是否裁剪数据
+        # 继续由调用侧显式决定，避免悄悄改评估集大小。
         if "debug" not in self.arg.train_feeder_args:
             self.arg.train_feeder_args["debug"] = self.arg.debug
 
@@ -121,6 +128,7 @@ class Processor(IO):
             for epoch in range(self.arg.start_epoch, self.arg.num_epoch):
                 self.meta_info["epoch"] = epoch
 
+                # 训练、存档、评估三段顺序保持与官方处理器一致。
                 self.io.info(f"Training epoch: {epoch}")
                 self.train()
                 self.io.success(f"Training epoch {epoch} done.")

@@ -8,7 +8,10 @@ import numpy as np
 
 
 def downsample(data_numpy: np.ndarray, step: int, random_sample: bool = True) -> np.ndarray:
-    """时间维下采样。"""
+    """时间维下采样。
+
+    输入布局始终约定为 ``(C, T, V, M)``。
+    """
     begin = np.random.randint(step) if random_sample else 0
     return data_numpy[:, begin::step, :, :]
 
@@ -22,7 +25,10 @@ def temporal_slice(data_numpy: np.ndarray, step: int) -> np.ndarray:
 
 
 def mean_subtractor(data_numpy: np.ndarray, mean: float) -> np.ndarray | None:
-    """对有效帧减去均值。"""
+    """对有效帧减去均值。
+
+    只对包含有效 skeleton 的时间段做平移，尾部纯零帧保持不变。
+    """
     if mean == 0:
         return None
     valid_frame = (data_numpy != 0).sum(axis=3).sum(axis=2).sum(axis=0) > 0
@@ -62,7 +68,11 @@ def random_move(
     transform_candidate: list[float] = [-0.2, -0.1, 0.0, 0.1, 0.2],
     move_time_candidate: list[int] = [1],
 ) -> np.ndarray:
-    """执行连续随机仿射扰动。"""
+    """执行连续随机仿射扰动。
+
+    与逐帧独立抖动不同，这里先在若干时间节点上采样角度、缩放和平移，
+    再对整段时间做线性插值，从而得到连续变化的运动扰动。
+    """
     _, T, V, M = data_numpy.shape
     move_time = random.choice(move_time_candidate)
     node = np.arange(0, T, T * 1.0 / move_time).round().astype(int)
@@ -79,6 +89,7 @@ def random_move(
     t_x = np.zeros(T)
     t_y = np.zeros(T)
 
+    # 在相邻节点之间线性插值，复现官方“连续随机运动”而不是离散跳变。
     for i in range(num_node - 1):
         a[node[i] : node[i + 1]] = np.linspace(A[i], A[i + 1], node[i + 1] - node[i]) * np.pi / 180
         s[node[i] : node[i + 1]] = np.linspace(S[i], S[i + 1], node[i + 1] - node[i])
@@ -89,6 +100,7 @@ def random_move(
         [[np.cos(a) * s, -np.sin(a) * s], [np.sin(a) * s, np.cos(a) * s]]
     )
 
+    # 对每一帧的人体坐标统一施加二维仿射变换。
     for i_frame in range(T):
         xy = data_numpy[0:2, i_frame, :, :]
         new_xy = np.dot(theta[:, :, i_frame], xy.reshape(2, -1))
@@ -115,10 +127,17 @@ def random_shift(data_numpy: np.ndarray) -> np.ndarray:
 
 
 def openpose_match(data_numpy: np.ndarray) -> np.ndarray:
-    """匹配相邻帧中的人体实例。"""
+    """匹配相邻帧中的人体实例。
+
+    算法保持官方实现语义：
+    1. 先按每帧 skeleton score 给人体实例排序；
+    2. 再用相邻帧关节距离做贪心匹配；
+    3. 最后按整段轨迹总分重新排序。
+    """
     C, T, V, M = data_numpy.shape
     assert C == 3
     score = data_numpy[2, :, :, :].sum(axis=1)
+    # 每帧人体置信度排名，后续按“高分优先”做跨帧匹配。
     rank = (-score[0 : T - 1]).argsort(axis=1).reshape(T - 1, M)
 
     xy1 = data_numpy[0:2, 0 : T - 1, :, :].reshape(2, T - 1, V, M, 1)
@@ -135,6 +154,7 @@ def openpose_match(data_numpy: np.ndarray) -> np.ndarray:
         forward_map[1:][choose] = forward
     assert np.all(forward_map >= 0)
 
+    # 把逐帧匹配结果串起来，得到完整轨迹的实例索引映射。
     for t in range(T - 1):
         forward_map[t + 1] = forward_map[t + 1][forward_map[t]]
 
@@ -143,6 +163,7 @@ def openpose_match(data_numpy: np.ndarray) -> np.ndarray:
         new_data_numpy[:, t, :, :] = data_numpy[:, t, :, forward_map[t]].transpose(1, 2, 0)
     data_numpy = new_data_numpy
 
+    # 最终按整段轨迹总分排序，保证输出的前几个实例尽量是主人体。
     trace_score = data_numpy[2, :, :, :].sum(axis=1).sum(axis=0)
     rank = (-trace_score).argsort()
     return data_numpy[:, :, :, rank]

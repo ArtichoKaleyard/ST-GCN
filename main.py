@@ -13,7 +13,12 @@ from torchlight import import_class
 
 
 def build_processor_registry() -> dict[str, type]:
-    """构建可用处理器注册表。"""
+    """构建可用处理器注册表。
+
+    返回的 key 必须继续对齐官方仓库的子命令名。这样既能保持
+    `main.py recognition ...` 这类入口兼容，也能让历史文档和旧脚本
+    不需要因为 modern 分支的代码整理而改命令。
+    """
     return {
         "recognition": import_class("processor.recognition.REC_Processor"),
         "demo_old": import_class("processor.demo_old.Demo"),

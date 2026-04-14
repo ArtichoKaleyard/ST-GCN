@@ -11,7 +11,17 @@ from . import tools
 
 
 class Feeder(torch.utils.data.Dataset):
-    """Feeder for skeleton-based action recognition。"""
+    """通用骨架动作识别数据集。
+
+    Args:
+        data_path: 形如 ``(N, C, T, V, M)`` 的 `.npy` 数据文件路径。
+        label_path: 与样本一一对应的标签文件路径。
+        random_choose: 是否随机裁剪时间窗。
+        random_move: 是否施加连续随机仿射扰动。
+        window_size: 输出序列长度；小于等于 0 时保持原长度。
+        debug: 是否只取前 100 个样本做快速调试。
+        mmap: 是否以内存映射方式读取大数组。
+    """
 
     def __init__(
         self,
@@ -57,6 +67,7 @@ class Feeder(torch.utils.data.Dataset):
         data_numpy = np.array(self.data[index])
         label = self.label[index]
 
+        # 增强顺序保持官方实现：先裁剪/补齐时间窗，再做随机运动扰动。
         if self.random_choose:
             data_numpy = tools.random_choose(data_numpy, self.window_size)
         elif self.window_size > 0:

@@ -16,7 +16,13 @@ from torchlight import str2bool
 
 
 class IO:
-    """IO Processor。"""
+    """处理器 I/O 基类。
+
+    负责三件事：
+    1. 解析命令行与 YAML 配置；
+    2. 构建 `torchlight.IO`、模型和设备环境；
+    3. 保持旧版处理器仍可通过 `self.arg / self.io / self.dev` 这套接口工作。
+    """
 
     def __init__(self, argv: list[str] | None = None):
         self.load_arg(argv)
@@ -26,7 +32,11 @@ class IO:
         self.gpu()
 
     def load_arg(self, argv: list[str] | None = None) -> None:
-        """读取命令行参数与配置文件。"""
+        """读取命令行参数与配置文件。
+
+        参数优先级保持官方实现：`命令行 > 配置文件 > parser 默认值`。
+        这对旧 YAML 的兼容性非常关键，因此这里继续沿用“两次 parse”流程。
+        """
         parser = self.get_parser()
         parsed_args = parser.parse_args(argv)
         if parsed_args.config is not None:
@@ -73,7 +83,11 @@ class IO:
             )
 
     def gpu(self) -> None:
-        """将模型和已挂载模块迁移到目标设备。"""
+        """将模型和已挂载模块迁移到目标设备。
+
+        除主模型外，也会扫描当前实例上已经挂载的 `nn.Module` 成员，一并迁移；
+        这样识别处理器里的损失函数等附属模块也会自动对齐到同一设备。
+        """
         self.model = self.model.to(self.dev)
         for name, value in vars(self).items():
             if isinstance(value, nn.Module):

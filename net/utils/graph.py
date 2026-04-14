@@ -6,7 +6,20 @@ import numpy as np
 
 
 class Graph:
-    """描述骨架节点连接关系的图结构。"""
+    """描述骨架节点连接关系的图结构。
+
+    Args:
+        layout: 骨架布局名。目前保留官方实现里的 `openpose`、
+            `ntu-rgb+d` 和 `ntu_edge`。
+        strategy: 图分区策略。常规值为 `uniform`、`distance`、`spatial`；
+            `distance_subsetnorm` 是 modern 分支里用于审计的探针策略。
+        max_hop: 允许纳入邻接矩阵的最大跳数。
+        dilation: 图卷积空间核的膨胀步长。
+
+    Notes:
+        原版 `distance` 策略的语义是“先对整体邻接做一次列归一化，再按 hop
+        切分子集”；`distance_subsetnorm` 则相反，用于比较两种归一化口径。
+    """
 
     def __init__(
         self,
@@ -26,7 +39,11 @@ class Graph:
         return str(self.A)
 
     def get_edge(self, layout: str) -> None:
-        """按布局构建边关系。"""
+        """按布局构建边关系。
+
+        每个布局都显式包含 self-loop。`self.center` 仅供 `spatial`
+        分区策略判定“离中心更近 / 更远”时使用。
+        """
         if layout == "openpose":
             self.num_node = 18
             self_link = [(i, i) for i in range(self.num_node)]
@@ -118,11 +135,19 @@ class Graph:
             raise ValueError("Do Not Exist This Layout.")
 
     def get_adjacency(self, strategy: str) -> None:
-        """按分区策略构建邻接矩阵。"""
+        """按分区策略构建邻接矩阵。
+
+        `uniform` 只保留一个归一化邻接矩阵；`distance` 按 hop 切分多个
+        子集但共享同一套整体归一化结果；`spatial` 则进一步按相对中心点的
+        远近把每个 hop 分成 root / close / further 三类。
+        """
         valid_hop = range(0, self.max_hop + 1, self.dilation)
         adjacency = np.zeros((self.num_node, self.num_node))
         for hop in valid_hop:
             adjacency[self.hop_dis == hop] = 1
+
+        # 官方实现对 `uniform` / `distance` / `spatial` 都先构造
+        # `hop <= max_hop` 的整体邻接，再共享这一套归一化结果。
         normalize_adjacency = normalize_digraph(adjacency)
 
         if strategy == "uniform":
@@ -137,6 +162,7 @@ class Graph:
         elif strategy == "distance_subsetnorm":
             A = np.zeros((len(valid_hop), self.num_node, self.num_node))
             for i, hop in enumerate(valid_hop):
+                # 该分支是审计探针：先切分每个 hop 子集，再对子集单独归一化。
                 subset_adjacency = np.zeros((self.num_node, self.num_node))
                 subset_adjacency[self.hop_dis == hop] = 1
                 A[i] = normalize_digraph(subset_adjacency)
@@ -167,7 +193,11 @@ class Graph:
 
 
 def get_hop_distance(num_node: int, edge: list[tuple[int, int]], max_hop: int = 1) -> np.ndarray:
-    """计算节点间跳数距离。"""
+    """计算节点间跳数距离。
+
+    返回矩阵的 `(i, j)` 元素表示节点 `i` 与 `j` 的最短 hop 距离；若在
+    `max_hop` 范围内不可达，则保留为 `np.inf`。
+    """
     A = np.zeros((num_node, num_node))
     for i, j in edge:
         A[j, i] = 1
@@ -182,7 +212,11 @@ def get_hop_distance(num_node: int, edge: list[tuple[int, int]], max_hop: int = 
 
 
 def normalize_digraph(A: np.ndarray) -> np.ndarray:
-    """归一化有向图邻接矩阵。"""
+    """归一化有向图邻接矩阵。
+
+    沿列做度归一化，使每个源节点发出的总权重为 1。这与官方 ST-GCN
+    对邻接矩阵的口径一致。
+    """
     Dl = np.sum(A, 0)
     num_node = A.shape[0]
     Dn = np.zeros((num_node, num_node))

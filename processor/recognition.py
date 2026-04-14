@@ -18,7 +18,11 @@ from .processor import Processor
 
 
 def weights_init(module: nn.Module) -> None:
-    """保持官方初始化策略不变。"""
+    """保持官方初始化策略不变。
+
+    这里只复现旧版对 Conv/BatchNorm 的初始化分支，不引入 PyTorch 2.x
+    里更“现代”的默认初始化，避免训练起点悄悄漂移。
+    """
     class_name = module.__class__.__name__
     with torch.no_grad():
         if class_name.find("Conv1d") != -1:
@@ -35,7 +39,13 @@ def weights_init(module: nn.Module) -> None:
 
 
 class REC_Processor(Processor):
-    """Processor for Skeleton-based Action Recognition。"""
+    """骨架动作识别处理器。
+
+    该处理器在 modern 分支里补入了 `tqdm` 和可选 AMP，但保留以下旧版语义：
+    - 优化器与学习率日程的配置键名不变；
+    - `show_topk` 的计算方式不变；
+    - 评估阶段仍先收集 logits，再统一拼接成 `self.result`。
+    """
 
     def load_model(self) -> None:
         """加载模型并初始化损失函数。"""
@@ -101,6 +111,8 @@ class REC_Processor(Processor):
             data = data.float().to(self.dev)
             label = label.long().to(self.dev)
 
+            # 只有在 CUDA 上且显式启用 `--amp` 时才进入 autocast；
+            # 否则保持与旧版 FP32 训练完全一致的执行路径。
             autocast_context = (
                 torch.amp.autocast("cuda", enabled=True)
                 if self.arg.amp and self.dev.type == "cuda"
@@ -127,7 +139,12 @@ class REC_Processor(Processor):
         self.io.print_timer()
 
     def test(self, evaluation: bool = True) -> None:
-        """执行测试或纯推理。"""
+        """执行测试或纯推理。
+
+        Args:
+            evaluation: 为真时同时计算 loss 与 top-k；为假时只做前向推理，
+                用于 demo / 导出等不关心标签指标的路径。
+        """
         self.model.eval()
         loader = self.data_loader["test"]
         loss_value: list[float] = []

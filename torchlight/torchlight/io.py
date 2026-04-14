@@ -51,7 +51,11 @@ class IO:
         """兼容旧版接口，当前版本不执行任何实际日志上报。"""
 
     def _build_logger(self):
-        """构建当前 IO 实例使用的 Herald logger。"""
+        """构建当前 IO 实例使用的 Herald logger。
+
+        终端只保留 `info+`，文件则继续保留 `debug+`，以兼容旧版
+        “屏幕少刷、日志尽量全”的使用习惯。
+        """
         log_dir = Path(self.work_dir)
         if self.save_log:
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +113,13 @@ class IO:
         weights_path: str,
         ignore_weights: str | list[str] | None = None,
     ) -> torch.nn.Module:
-        """加载权重文件，保持旧版过滤与兼容加载语义。"""
+        """加载权重文件，保持旧版过滤与兼容加载语义。
+
+        兼容行为包括：
+        - 自动剥离 `DataParallel` 产生的 `module.` 前缀；
+        - 支持 `ignore_weights` 前缀过滤；
+        - 当目标模型缺少部分键时，用当前 state_dict 补齐后再加载。
+        """
         if ignore_weights is None:
             ignore_weights = []
         if isinstance(ignore_weights, str):
@@ -139,6 +149,8 @@ class IO:
         try:
             model.load_state_dict(weights)
         except (KeyError, RuntimeError):
+            # 旧版实现允许“部分命中 + 其余保留当前初始化值”的加载方式，
+            # 这里继续保留该语义，避免老 checkpoint 因轻微键差直接失败。
             state = model.state_dict()
             diff = list(set(state.keys()).difference(set(weights.keys())))
             for missing_key in diff:
@@ -162,6 +174,7 @@ class IO:
         """保存模型权重，保持旧版 state_dict 键名处理方式。"""
         model_path = Path(self.work_dir, name)
         state_dict = model.state_dict()
+        # 存盘时去掉 `module.`，确保单卡与 DataParallel 产物共用同一套键名。
         weights = OrderedDict(
             ("".join(key.split("module.")), value.cpu())
             for key, value in state_dict.items()
@@ -228,7 +241,10 @@ def str2bool(v: str) -> bool:
 
 
 def str2dict(v: str) -> dict[str, Any]:
-    """保持旧版字符串字典解析行为。"""
+    """保持旧版字符串字典解析行为。
+
+    这里仍保留 `dict(k=v, ...)` 风格解析，以兼容历史命令行与 YAML 片段。
+    """
     return eval(f"dict({v})")  # pylint: disable=eval-used
 
 

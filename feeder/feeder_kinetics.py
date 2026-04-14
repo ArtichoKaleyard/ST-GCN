@@ -12,7 +12,21 @@ from . import tools
 
 
 class Feeder_kinetics(torch.utils.data.Dataset):
-    """Feeder for skeleton-based action recognition in kinetics-skeleton dataset。"""
+    """Kinetics-skeleton 数据集 feeder。
+
+    Args:
+        data_path: 按样本拆分的骨架 JSON 目录。
+        label_path: Kinetics 标签 JSON。
+        ignore_empty_sample: 是否过滤 `has_skeleton == False` 的样本。
+        random_choose: 是否随机裁剪时间窗。
+        random_shift: 是否在时间维随机平移有效帧。
+        random_move: 是否做连续随机仿射扰动。
+        window_size: 输出时间窗长度。
+        pose_matching: 是否在相邻帧间执行人体匹配。
+        num_person_in: 单个样本最多读取多少个人体实例。
+        num_person_out: 输出时最多保留多少个人体实例。
+        debug: 是否只取极少样本做快速调试。
+    """
 
     def __init__(
         self,
@@ -56,6 +70,7 @@ class Feeder_kinetics(torch.utils.data.Dataset):
         self.label = np.array([label_info[sample]["label_index"] for sample in sample_id])
         has_skeleton = np.array([label_info[sample]["has_skeleton"] for sample in sample_id])
 
+        # Kinetics 标注里可能存在没有骨架的样本；官方实现默认直接过滤掉。
         if self.ignore_empty_sample:
             self.sample_name = [s for h, s in zip(has_skeleton, self.sample_name) if h]
             self.label = self.label[has_skeleton]
@@ -91,6 +106,7 @@ class Feeder_kinetics(torch.utils.data.Dataset):
                 data_numpy[1, frame_index, :, m] = pose[1::2]
                 data_numpy[2, frame_index, :, m] = score
 
+        # 与官方预处理一致：先把 xy 中心化到 [-0.5, 0.5] 左右，再把缺失点清零。
         data_numpy[0:2] = data_numpy[0:2] - 0.5
         data_numpy[0][data_numpy[2] == 0] = 0
         data_numpy[1][data_numpy[2] == 0] = 0
@@ -107,11 +123,13 @@ class Feeder_kinetics(torch.utils.data.Dataset):
         if self.random_move:
             data_numpy = tools.random_move(data_numpy)
 
+        # 每一帧按 skeleton score 排序，只保留分数最高的若干人体实例。
         sort_index = (-data_numpy[2, :, :, :].sum(axis=1)).argsort(axis=1)
         for t, sort_order in enumerate(sort_index):
             data_numpy[:, t, :, :] = data_numpy[:, t, :, sort_order].transpose((1, 2, 0))
         data_numpy = data_numpy[:, :, :, 0 : self.num_person_out]
 
+        # 可选地在时间维上重排人体轨迹，使同一人尽量保持实例槽位一致。
         if self.pose_matching:
             data_numpy = tools.openpose_match(data_numpy)
 
