@@ -12,13 +12,15 @@ class Graph:
         layout: 骨架布局名。目前保留官方实现里的 `openpose`、
             `ntu-rgb+d` 和 `ntu_edge`。
         strategy: 图分区策略。常规值为 `uniform`、`distance`、`spatial`；
-            `distance_subsetnorm` 是 modern 分支里用于审计的探针策略。
+            `distance_subsetnorm` 与 `*_subsetnorm_rescaled` 是 modern 分支里
+            用于审计和补偿假设实验的派生策略。
         max_hop: 允许纳入邻接矩阵的最大跳数。
         dilation: 图卷积空间核的膨胀步长。
 
     Notes:
         原版 `distance` 策略的语义是“先对整体邻接做一次列归一化，再按 hop
-        切分子集”；`distance_subsetnorm` 则相反，用于比较两种归一化口径。
+        切分子集”；`distance_subsetnorm` 则相反；`*_subsetnorm_rescaled`
+        在子集独立归一化后再统一乘以 `1 / K`，用于控制总消息量。
     """
 
     def __init__(
@@ -139,7 +141,9 @@ class Graph:
 
         `uniform` 只保留一个归一化邻接矩阵；`distance` 按 hop 切分多个
         子集但共享同一套整体归一化结果；`spatial` 则进一步按相对中心点的
-        远近把每个 hop 分成 root / close / further 三类。
+        远近把每个 hop 分成 root / close / further 三类。`*_subsetnorm`
+        变体会先对子集单独归一化；`*_subsetnorm_rescaled` 还会额外乘以
+        `1 / K`，把总消息量拉回和原策略同量级。
         """
         valid_hop = range(0, self.max_hop + 1, self.dilation)
         adjacency = np.zeros((self.num_node, self.num_node))
@@ -167,6 +171,14 @@ class Graph:
                 subset_adjacency[self.hop_dis == hop] = 1
                 A[i] = normalize_digraph(subset_adjacency)
             self.A = A
+        elif strategy == "distance_subsetnorm_rescaled":
+            A = np.zeros((len(valid_hop), self.num_node, self.num_node))
+            subset_scale = 1.0 / len(valid_hop)
+            for i, hop in enumerate(valid_hop):
+                subset_adjacency = np.zeros((self.num_node, self.num_node))
+                subset_adjacency[self.hop_dis == hop] = 1
+                A[i] = normalize_digraph(subset_adjacency) * subset_scale
+            self.A = A
         elif strategy == "spatial":
             adjacency_list = []
             for hop in valid_hop:
@@ -188,6 +200,27 @@ class Graph:
                     adjacency_list.append(a_root + a_close)
                     adjacency_list.append(a_further)
             self.A = np.stack(adjacency_list)
+        elif strategy == "spatial_subsetnorm_rescaled":
+            adjacency_list = []
+            for hop in valid_hop:
+                a_root = np.zeros((self.num_node, self.num_node))
+                a_close = np.zeros((self.num_node, self.num_node))
+                a_further = np.zeros((self.num_node, self.num_node))
+                for i in range(self.num_node):
+                    for j in range(self.num_node):
+                        if self.hop_dis[j, i] == hop:
+                            if self.hop_dis[j, self.center] == self.hop_dis[i, self.center]:
+                                a_root[j, i] = 1
+                            elif self.hop_dis[j, self.center] > self.hop_dis[i, self.center]:
+                                a_close[j, i] = 1
+                            else:
+                                a_further[j, i] = 1
+                if hop == 0:
+                    adjacency_list.append(normalize_digraph(a_root))
+                else:
+                    adjacency_list.append(normalize_digraph(a_root + a_close))
+                    adjacency_list.append(normalize_digraph(a_further))
+            self.A = np.stack(adjacency_list) * (1.0 / len(adjacency_list))
         else:
             raise ValueError("Do Not Exist This Strategy")
 

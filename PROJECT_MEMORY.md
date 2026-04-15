@@ -84,3 +84,11 @@
 - Action/Command: 对照 `221c0e1` 官方基线与当前 modern 文件，恢复 `Model` / `st_gcn` / `ConvTemporalGraphical` / `Graph` / `Processor` / `REC_Processor` / feeder / `torchlight.IO` 等核心模块中的高价值说明，并执行 `python3 -m compileall main.py net processor feeder torchlight`。
 - Verification: 当前相关文件均已通过 `compileall`；本次修改只涉及注释、docstring 与说明性类型语义，没有改动模型结构、参数名、配置键名或张量计算路径。
 - Follow-up: 后续再做 modern 化整理时，涉及官方数学定义、张量布局、图构造、兼容加载或多阶段处理器调度的代码，默认不要把原版语义说明压缩成只剩一句短 docstring。
+
+## 2026-04-15 - `distance partitioning` 补偿假设实验设计
+- Context: 用户与外部讨论后，将第二轮 `distance partitioning` 实验目标进一步收缩为验证“原版 subset balance 偏置是否存在，以及 `edge importance weighting` 是否在补偿这种偏置”。用户明确要求先把详细实验设计写成独立文档，避免后续边实现边漂移。
+- Decision: 在 [doc/2026-04-15_ST-GCN distance partitioning 补偿假设实验设计.md](/home/atk/PyCharm/ST-GCN/doc/2026-04-15_ST-GCN%20distance%20partitioning%20补偿假设实验设计.md) 固定这轮设计：第一阶段 4 个 `20 epoch`（`distance_imp`、`distance_subsetnorm_rescaled_noimp`、`distance_subsetnorm_rescaled_imp`、`spatial_subsetnorm_rescaled_noimp`），第二阶段 2 个 `40 epoch`（固定 `distance_imp`，另一个按第一阶段结果在 `distance_subsetnorm_rescaled_imp` 与 `spatial_subsetnorm_rescaled_noimp` 中二选一）。同时固定 `A_eff = A ⊙ M` 的轻量统计口径。
+- Why: 前一轮 `distance_subsetnorm` 探针已经说明，单纯“先切分再归一化”会明显改变总消息量与 self / neighbor 的相对强度。如果不先钉死 `subsetnorm_rescaled` 的定义，后续任何结果都不好解释。
+- Action/Command: 文档中已固定 `subsetnorm_rescaled` 的定义为“对子集分别 `normalize_digraph` 后，统一乘以 `1/K`”，其中 `distance` 用 `K=2`，`spatial` 用 `K=3`；并明确这轮不做裸 `subsetnorm`、不做 `uniform` 新变体、不做多 seed，也不优先做热图。
+- Verification: 当前这只是设计冻结，不涉及代码实现和数值验证；但后续实现必须严格对齐该文档中的实验名、训练协议、判据和统计量。2026-04-15 同时已在训练入口补入显式 `--seed`，默认固定为 `49`；该值用于后续新实验的正式固定种子，不反向覆盖旧实验配置或旧结果的历史语义。
+- Follow-up: 下一步实现时，优先围绕 `graph.py` 新增 `distance_subsetnorm_rescaled` / `spatial_subsetnorm_rescaled`，再补对应配置与 `A_eff` 统计脚本，不要先随手开跑。
