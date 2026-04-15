@@ -217,6 +217,11 @@ def parse_args() -> argparse.Namespace:
         help="实验配置文件路径，例如 config/ablation/ntu-xsub/distance_imp.yaml",
     )
     parser.add_argument(
+        "--work-dir",
+        default=None,
+        help="显式指定 checkpoint 所在工作目录；默认读取配置文件中的 work_dir",
+    )
+    parser.add_argument(
         "--epoch",
         type=int,
         default=None,
@@ -236,7 +241,11 @@ def main() -> None:
     config_path = (ROOT_DIR / args.config).resolve()
     config = load_config(config_path)
 
-    work_dir = (ROOT_DIR / config["work_dir"]).resolve()
+    work_dir = (
+        (ROOT_DIR / args.work_dir).resolve()
+        if args.work_dir is not None
+        else (ROOT_DIR / config["work_dir"]).resolve()
+    )
     checkpoint_path = resolve_checkpoint_path(work_dir, args.epoch)
     model = load_model_from_config(config, checkpoint_path)
 

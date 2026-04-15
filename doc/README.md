@@ -4,3 +4,4 @@
 - [2026-04-13_ST-GCN第一轮消融实验报告](./2026-04-13_ST-GCN%E7%AC%AC%E4%B8%80%E8%BD%AE%E6%B6%88%E8%9E%8D%E5%AE%9E%E9%AA%8C%E6%8A%A5%E5%91%8A.md)
 - [2026-04-13_ST-GCN distance partitioning 语义审计报告](./2026-04-13_ST-GCN%20distance%20partitioning%20%E8%AF%AD%E4%B9%89%E5%AE%A1%E8%AE%A1%E6%8A%A5%E5%91%8A.md)
 - [2026-04-15_ST-GCN distance partitioning 补偿假设实验设计](./2026-04-15_ST-GCN%20distance%20partitioning%20%E8%A1%A5%E5%81%BF%E5%81%87%E8%AE%BE%E5%AE%9E%E9%AA%8C%E8%AE%BE%E8%AE%A1.md)
+- [2026-04-15_ST-GCN distance partitioning 补偿假设实验报告](./2026-04-15_ST-GCN%20distance%20partitioning%20%E8%A1%A5%E5%81%BF%E5%81%87%E8%AE%BE%E5%AE%9E%E9%AA%8C%E6%8A%A5%E5%91%8A.md)
