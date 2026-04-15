@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import random
 from typing import Any
 
 import numpy as np
@@ -36,10 +37,41 @@ class Processor(IO):
     def init_environment(self) -> None:
         """初始化处理器上下文。"""
         super().init_environment()
+        self.set_random_seed()
         self.result: dict[str, Any] | np.ndarray = {}
         self.iter_info: dict[str, Any] = {}
         self.epoch_info: dict[str, Any] = {}
         self.meta_info: dict[str, int] = dict(epoch=0, iter=0)
+
+    def set_random_seed(self) -> None:
+        """在主进程与 CUDA 上统一设置随机种子。
+
+        这里的目标不是追求 PyTorch 所有算子的绝对逐 bit 可复现，而是把
+        Python / NumPy / Torch / DataLoader worker / shuffle 的随机源统一到
+        同一个显式 seed 上，避免“默认单次运行”被误写成“统一 seed 实验”。
+        """
+        seed = int(self.arg.seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+        # 保持 cudnn benchmark 与项目旧训练路径一致，不强行切到完全确定性
+        # 模式；这轮需求是“显式固定同一 seed”，不是额外改动数值/性能路径。
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
+
+        # 为 DataLoader 的 shuffle 与 worker 初始化保留同一个基础随机源。
+        self.data_loader_generator = torch.Generator()
+        self.data_loader_generator.manual_seed(seed)
+
+    def seed_worker(self, worker_id: int) -> None:
+        """按 worker 派生随机种子，保持多进程数据加载可追踪。"""
+        worker_seed = (int(self.arg.seed) + worker_id) % (2**32)
+        random.seed(worker_seed)
+        np.random.seed(worker_seed)
+        torch.manual_seed(worker_seed)
 
     def load_optimizer(self) -> None:
         """由子类实现优化器加载。"""
@@ -61,6 +93,8 @@ class Processor(IO):
                 shuffle=True,
                 num_workers=self.arg.num_worker * torchlight.ngpu(self.arg.device),
                 drop_last=True,
+                worker_init_fn=self.seed_worker,
+                generator=self.data_loader_generator,
             )
         if self.arg.test_feeder_args:
             self.data_loader["test"] = torch.utils.data.DataLoader(
@@ -68,6 +102,8 @@ class Processor(IO):
                 batch_size=self.arg.test_batch_size,
                 shuffle=False,
                 num_workers=self.arg.num_worker * torchlight.ngpu(self.arg.device),
+                worker_init_fn=self.seed_worker,
+                generator=self.data_loader_generator,
             )
 
     def show_epoch_info(self) -> None:
@@ -234,6 +270,12 @@ class Processor(IO):
             "--test_batch_size", type=int, default=256, help="测试 batch size"
         )
         parser.add_argument("--debug", action="store_true", help="少量数据，便于快速调试")
+        parser.add_argument(
+            "--seed",
+            type=int,
+            default=49,
+            help="统一实验随机种子，用于主进程、CUDA 与 DataLoader worker",
+        )
 
         parser.add_argument("--model", default=None, help="使用的模型")
         parser.add_argument("--model_args", action=DictAction, default=dict(), help="模型参数")
