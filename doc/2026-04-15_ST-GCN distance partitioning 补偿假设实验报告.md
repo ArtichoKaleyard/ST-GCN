@@ -36,6 +36,10 @@
 - AMP：开启
 - seed：固定为 `49`
 
+阶段一更适合单独看一张“20 epoch 筛查图”，因为这个阶段的重点不是拉长到最终最好点，而是比较 4 条曲线在中期节点上的稳定性、相对排序和 `val loss` 形态。
+
+![阶段一 20 epoch 筛查图](./work_dir/figures/ntu_xsub_distance_compensation_stage1.png)
+
 ### 2.2 阶段二：40 epoch 确认
 
 根据阶段一结果，最终拉长到 40 epoch 的 2 组实验为：
@@ -48,6 +52,10 @@
 - 训练轮数：`40`
 - 学习率衰减：`step = [10, 20, 30]`
 - 其余设置与阶段一保持一致
+
+阶段二则更适合看 head-to-head 图，而不是混在六组总图里。这里最关键的是 `B2` 是否在更长训练中继续压住 `B1`，尤其是 `Top-1` 与验证 loss 能否持续分离。
+
+![阶段二 40 epoch 确认图](./work_dir/figures/ntu_xsub_distance_compensation_stage2.png)
 
 ## 3. 六组实验结果
 
@@ -70,6 +78,8 @@
 - `A2` 虽然仍弱于 `importance` 版本，但曲线明显比历史 `distance_noimp` 更稳
 - `A4` 与历史 `spatial_noimp` 十分接近，没有表现出同量级的异常
 
+这三点在阶段一筛查图里是分得开的：`A3` 与 `A1` 的差距不大但稳定存在，`A2` 的价值主要体现在“稳住而不是登顶”，`A4` 则基本回到 `spatial` 家族的正常波动区间。
+
 ### 3.2 阶段二结果（40 epoch）
 
 | 编号 | 实验 | Best Top-1 | Best Epoch | Final Top-1 | Best Top-5 | Final Top-5 |
@@ -90,6 +100,8 @@
 - `epoch 29`: `0.7568 < 0.8253`
 - `epoch 34`: `0.7487 < 0.8105`
 - `epoch 39`: `0.7403 < 0.8224`
+
+从阶段二确认图直接看，会比盯表格更清楚：这不是单点偶然领先，而是 `B2` 在 40 epoch 后半程持续占优。
 
 ## 4. 与原始参考基线的关系
 
@@ -138,16 +150,42 @@
 这说明：  
 “先整体归一化再切分”带来的语义问题，主要集中在 `distance partitioning`，并没有在 `spatial partitioning` 上表现为同量级异常。
 
+为了避免把这段话读成纯文字判断，这里单独补一张与第一轮基线的桥接图。左图回答“`distance` 家族是否真的摆脱了中期塌陷”，右图回答“`spatial` 家族是不是本来就没这个量级的问题”。
+
+![与第一轮原始参考基线的桥接对比图](./work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.png)
+
 ## 5. 结果可视化产物
 
-本轮已经整理出两张专门图像：
+本轮已经整理出 5 张更适合对应章节阅读的图像：
+
+- 阶段一筛查图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_stage1.png](./work_dir/figures/ntu_xsub_distance_compensation_stage1.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_stage1.pdf](./work_dir/figures/ntu_xsub_distance_compensation_stage1.pdf)
+- 阶段二确认图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_stage2.png](./work_dir/figures/ntu_xsub_distance_compensation_stage2.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_stage2.pdf](./work_dir/figures/ntu_xsub_distance_compensation_stage2.pdf)
+- 与第一轮基线桥接图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.png](./work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.pdf](./work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.pdf)
+- `distance` 家族桥接聚焦图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_distance_bridge.png](./work_dir/figures/ntu_xsub_distance_compensation_distance_bridge.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_distance_bridge.pdf](./work_dir/figures/ntu_xsub_distance_compensation_distance_bridge.pdf)
+- `spatial` 家族桥接聚焦图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_spatial_bridge.png](./work_dir/figures/ntu_xsub_distance_compensation_spatial_bridge.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_spatial_bridge.pdf](./work_dir/figures/ntu_xsub_distance_compensation_spatial_bridge.pdf)
 
 - 实验结果总图：
-  - [work_dir/figures/ntu_xsub_distance_compensation_results.png](../work_dir/figures/ntu_xsub_distance_compensation_results.png)
-  - [work_dir/figures/ntu_xsub_distance_compensation_results.pdf](../work_dir/figures/ntu_xsub_distance_compensation_results.pdf)
+  - [work_dir/figures/ntu_xsub_distance_compensation_results.png](./work_dir/figures/ntu_xsub_distance_compensation_results.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_results.pdf](./work_dir/figures/ntu_xsub_distance_compensation_results.pdf)
 - 权重分析图：
-  - [work_dir/figures/ntu_xsub_distance_compensation_weights.png](../work_dir/figures/ntu_xsub_distance_compensation_weights.png)
-  - [work_dir/figures/ntu_xsub_distance_compensation_weights.pdf](../work_dir/figures/ntu_xsub_distance_compensation_weights.pdf)
+  - [work_dir/figures/ntu_xsub_distance_compensation_weights.png](./work_dir/figures/ntu_xsub_distance_compensation_weights.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_weights.pdf](./work_dir/figures/ntu_xsub_distance_compensation_weights.pdf)
+- `mask_mean` 聚焦图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_mask_focus.png](./work_dir/figures/ntu_xsub_distance_compensation_mask_focus.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_mask_focus.pdf](./work_dir/figures/ntu_xsub_distance_compensation_mask_focus.pdf)
+- `A_eff` 聚焦图：
+  - [work_dir/figures/ntu_xsub_distance_compensation_aeff_focus.png](./work_dir/figures/ntu_xsub_distance_compensation_aeff_focus.png)
+  - [work_dir/figures/ntu_xsub_distance_compensation_aeff_focus.pdf](./work_dir/figures/ntu_xsub_distance_compensation_aeff_focus.pdf)
 
 对应脚本为：
 
@@ -156,10 +194,14 @@
 
 导出的 `A_eff` 统计文件位于：
 
-- [distance_imp_e40/stats/effective_adjacency.csv](../work_dir/ablation/ntu-xsub/distance_imp_e40/stats/effective_adjacency.csv)
-- [distance_subsetnorm_rescaled_imp_e40/stats/effective_adjacency.csv](../work_dir/ablation/ntu-xsub/distance_subsetnorm_rescaled_imp_e40/stats/effective_adjacency.csv)
+- [distance_imp_e40/stats/effective_adjacency.csv](./work_dir/ablation/ntu-xsub/distance_imp_e40/stats/effective_adjacency.csv)
+- [distance_subsetnorm_rescaled_imp_e40/stats/effective_adjacency.csv](./work_dir/ablation/ntu-xsub/distance_subsetnorm_rescaled_imp_e40/stats/effective_adjacency.csv)
 
 ## 6. 实验结果分析
+
+在进入分阶段分析前，先放回这轮实验的结果总览图。前面几张阶段图、桥接图和聚焦图回答的是局部问题；这张总图回答的是“六组实验放到同一张坐标纸上后，整体趋势是否彼此一致”，也就是所有局部判断有没有互相打架。
+
+![补偿实验结果总览图](./work_dir/figures/ntu_xsub_distance_compensation_results.png)
 
 ### 6.1 `importance` 能显著补偿原始 `distance` 异常
 
@@ -175,6 +217,12 @@
 这说明：  
 原始 `distance` 的问题并不只是“天生比 `uniform` 或 `spatial` 差”，而是它在无可学习边权时，确实对 subset balance 更敏感。
 
+对应到图上，这一条主要看桥接图左半部分和阶段一筛查图：`distance_imp` 不是只比 `distance_noimp` 高一点，而是直接把整条曲线拉回正常区间。
+
+这里可以直接回看两张图：桥接图回答“相对第一轮基线到底修复了多少”，阶段一筛查图回答“在第二轮 4 组内部它处在什么位置”。
+
+![阶段一筛查图：`distance_imp` 已回到正常区间](./work_dir/figures/ntu_xsub_distance_compensation_stage1.png)
+
 ### 6.2 `subsetnorm_rescaled` 本身也有独立收益
 
 如果 `importance` 已经完全解决了问题，那么 `A3/B2` 理应与 `A1/B1` 基本重合。
@@ -186,6 +234,12 @@
 
 也就是说，`importance` 确实在补偿原版 `distance` 的不理想平衡，但它不是全部。  
 在“总消息量不被放大”的前提下，把 `distance` 改成 `subset-wise normalize + 1/K rescale`，仍然带来了一段可保留的净收益。
+
+这一点主要看阶段一与阶段二两张图：阶段一里 `A3` 对 `A1` 是“持续略优”，阶段二里 `B2` 对 `B1` 则进一步拉成了更明确的长程优势。
+
+如果只保留一句“持续略优”，读者还是要自己在总图里找曲线；这里直接看阶段二确认图会更直观，因为 `B2` 的优势已经从短程轻微领先，变成了长程持续领先。
+
+![阶段二确认图：`distance_subsetnorm_rescaled_imp` 持续领先 `distance_imp`](./work_dir/figures/ntu_xsub_distance_compensation_stage2.png)
 
 ### 6.3 `subsetnorm_rescaled_noimp` 的价值主要在“稳住”，不是直接追平 `imp`
 
@@ -201,6 +255,12 @@
 - subset balance 偏置本身确实是问题来源之一
 - 即便不借助 `importance`，只把归一化语义修平，也能先把最明显的异常形态压住
 
+这点最适合看桥接图左半部分：`A2` 没有追平 `A1/A3`，但已经明显脱离了原始 `distance_noimp` 的塌陷轨迹。
+
+也就是说，`A2` 的读法应该是“先把形态修正，再谈上限”，而不是简单拿它和 `A1/A3` 做最终点数比较。
+
+![`distance` 家族桥接图：`A2` 已明显脱离原始 `distance_noimp` 的塌陷轨迹](./work_dir/figures/ntu_xsub_distance_compensation_distance_bridge.png)
+
 ### 6.4 该问题主要集中在 `distance`，而不是普遍存在于所有 partition
 
 `A4 = spatial_subsetnorm_rescaled_noimp` 与原始 `spatial_noimp` 之间只有小幅差异，没有出现类似 `distance` 的异常收益或异常修复。
@@ -211,7 +271,17 @@
 - 即使原实现口径不是严格的 subset-wise normalize，它也没有在 `spatial` 上表现为同等级失衡
 - 因而当前问题更适合被归类为 `distance partitioning` 的特定实现偏置，而不是整个 ST-GCN 多子集实现都需要重写
 
+这也是为什么桥接图要把 `distance` 和 `spatial` 分成左右两块看：只有这样，`A4` 的“差异很小”才不会被 `distance` 家族更剧烈的波动淹没。
+
+如果把 `A4` 混在统一总图里，它很容易被读成“只是另一条中间水平的曲线”；拆到桥接图右侧之后，才能看清它和原始 `spatial_noimp` 基本重合。
+
+![`spatial` 家族桥接图：没有出现 `distance` 那种同量级异常](./work_dir/figures/ntu_xsub_distance_compensation_spatial_bridge.png)
+
 ## 7. 权重分析
+
+进入细分的 `mask_mean` / `A_eff` 聚焦图之前，先看一张权重总览图。它的作用不是替代后面的聚焦图，而是先给出“两个 40 epoch 模型在各层上的整体结构差异到底长什么样”，后面的两张聚焦图只是把它拆开细读。
+
+![权重分析总览图](./work_dir/figures/ntu_xsub_distance_compensation_weights.png)
 
 ### 7.1 `mask_mean` 本身没有显示出强烈的不对称
 
@@ -223,6 +293,10 @@
 这说明如果只看 `M` 的平均值，很容易得出“两个子集权重差不多”的表面结论。
 
 但这并不足以解释最终性能差异，因为 `M` 是乘在基础邻接 `A` 上的。
+
+单独看这一步，最容易被误读成“两个模型学出来的边权其实差不多，所以机制上没区别”。权重分析图的上排正好用来反驳这种过早结论。
+
+![`mask_mean` 聚焦图：本身并没有拉开显著差距](./work_dir/figures/ntu_xsub_distance_compensation_mask_focus.png)
 
 ### 7.2 真正关键的是 `A_eff = A ⊙ M` 的子集强度分布
 
@@ -252,6 +326,10 @@
    - `layer 5`: `1.400`
    - `layer 7`: `1.255`
 
+这部分最适合直接看权重分析图下排，因为下排把 `self / neighbor ratio` 和两条 `A_eff` 子集强度曲线放在一起，能同时看到“平均 mask 没明显差别”和“有效邻接重心已经换边”这两个事实。
+
+![`A_eff` 聚焦图：真正拉开差距的是子集强度分布](./work_dir/figures/ntu_xsub_distance_compensation_aeff_focus.png)
+
 ### 7.3 这与补偿假设是吻合的
 
 如果原版 `distance` 的基础口径就让 self 分支偏弱，那么：
@@ -266,6 +344,12 @@
 - `importance` 在原版 `distance` 上确实承担了部分补偿角色
 - 但这种补偿并不彻底
 - 一旦把底层归一化口径改成 `subsetnorm_rescaled`，模型就更容易形成对 self 分支更健康的有效邻接分布，并进一步转化为最终精度收益
+
+把训练曲线和权重图放在一起读，会比单看任意一张图更稳妥：
+
+- 阶段图告诉我们性能收益是真实存在且跨阶段可重复的
+- 桥接图告诉我们收益主要集中在 `distance`
+- 权重图告诉我们收益背后的结构变化不是 `mask` 平均值本身，而是 `A_eff` 重心迁移
 
 ## 8. 当前结论
 
@@ -285,6 +369,9 @@
 
 5. `A_eff` 分析支持“importance 在补偿原版偏置”这一假设链，但也表明补偿并不完全。  
    `subsetnorm_rescaled` 让最终有效邻接从 neighbor-dominant 转向更平衡甚至 self-favoring 的状态，这与最终性能提升方向一致。
+
+还可以补一条更谨慎的推断，但它目前还不是完整实验结论：  
+从当前证据看，`subsetnorm_rescaled` 的主要起效路径更像“修正原始 partition 的 subset balance 偏置”，而不是单纯增加模型容量。沿这个思路外推，`spatial_imp` 即使后续补做 `spatial_subsetnorm_rescaled_imp`，也未必会出现像 `distance_imp -> distance_subsetnorm_rescaled_imp` 这样明确的额外收益。现有唯一能直接参考的是 `spatial_subsetnorm_rescaled_noimp` 对 `spatial_noimp` 的结果：它在前期节点并没有更好，直到中后期才逐步接近，最终也只体现为很小差异。因此更稳妥的写法应是：`spatial_imp` 至多可能存在有限影响，但目前没有证据支持它会带来像 `distance` 分支那样清晰、稳定、可观的额外收益。之所以这里只能写成倾向性判断，是因为当前对 `spatial` 的证据还只有 `noimp` 分支，没有直接的 `spatial_imp` 对照实验。
 
 ## 9. 后续建议
 

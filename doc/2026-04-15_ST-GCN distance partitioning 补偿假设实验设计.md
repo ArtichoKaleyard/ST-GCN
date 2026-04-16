@@ -310,7 +310,27 @@
 1. `importance` 能否把原版 `distance` 的异常大部分学掉。
 2. 在总量公平前提下，`subsetnorm_rescaled` 是否仍存在独立于 `importance` 的净收益。
 
-## 12. 当前接受的工作结论
+## 12. 对应分析图规划
+
+这轮设计虽然先于结果落地，但分析视角不应等跑完后再临时决定。当前固定 5 张对应图，各自回答不同问题：
+
+- 阶段一筛查图：
+  [work_dir/figures/ntu_xsub_distance_compensation_stage1.png](./work_dir/figures/ntu_xsub_distance_compensation_stage1.png)
+  用于回答 `A1/A2/A3/A4` 在 `20 epoch` 内谁更稳、谁只是中期修复、谁是结构性领先。
+- 阶段二确认图：
+  [work_dir/figures/ntu_xsub_distance_compensation_stage2.png](./work_dir/figures/ntu_xsub_distance_compensation_stage2.png)
+  用于回答 `B2` 是否在更长训练里继续压住 `B1`，而不是只在短程里占优。
+- 与第一轮基线桥接图：
+  [work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.png](./work_dir/figures/ntu_xsub_distance_compensation_baseline_bridge.png)
+  用于回答 `distance` 家族是否真的摆脱了原始塌陷，以及 `spatial` 家族是否本来就没有同量级问题。
+- 实验结果总图：
+  [work_dir/figures/ntu_xsub_distance_compensation_results.png](./work_dir/figures/ntu_xsub_distance_compensation_results.png)
+  用于保留全局鸟瞰，不替代分阶段图。
+- 权重分析图：
+  [work_dir/figures/ntu_xsub_distance_compensation_weights.png](./work_dir/figures/ntu_xsub_distance_compensation_weights.png)
+  用于回答 `importance` 学出的到底是 `mask` 平均值差异，还是 `A_eff` 子集强度重心变化。
+
+## 13. 当前接受的工作结论
 
 这份实验设计当前默认接受以下前提：
 

@@ -203,6 +203,24 @@ def build_default_runs() -> list[tuple[str, Path]]:
     ]
 
 
+def finalize_figure(
+    fig: mpl.figure.Figure,
+    title: str,
+    *,
+    fontsize: float,
+    top: float = 0.955,
+    x: float = 0.02,
+    ha: str = "left",
+) -> None:
+    """为总标题预留独立顶边距，避免与子图标题重叠。"""
+    layout_engine = fig.get_layout_engine()
+    if layout_engine is not None and hasattr(layout_engine, "set"):
+        layout_engine.set(rect=(0.0, 0.0, 1.0, top))
+    else:
+        fig.subplots_adjust(top=top)
+    fig.suptitle(title, x=x, y=0.98, ha=ha, va="top", fontsize=fontsize)
+
+
 def plot_runs(runs: list[AblationRun], output_dir: Path) -> list[Path]:
     """绘制消融对比图。"""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -213,7 +231,7 @@ def plot_runs(runs: list[AblationRun], output_dir: Path) -> list[Path]:
         [["top1", "top5"], ["loss", "summary"]],
         figsize=(8.4, 6.2),
         gridspec_kw={"height_ratios": [1.05, 1.0], "width_ratios": [1.05, 0.95]},
-        constrained_layout=True,
+        layout="constrained",
     )
     ordered_runs = sorted(runs, key=lambda run: run.final_top1)
     summary_positions = np.arange(len(ordered_runs))
@@ -329,17 +347,17 @@ def plot_runs(runs: list[AblationRun], output_dir: Path) -> list[Path]:
 
     best_run = max(runs, key=lambda run: run.best_top1)
     worst_run = min(runs, key=lambda run: run.final_top1)
-    fig.suptitle(
+    finalize_figure(
+        fig,
         (
             "NTU RGB+D xsub First-Round Ablation: "
             f"{best_run.label} best {best_run.best_top1:.2f}, "
             f"{worst_run.label} final {worst_run.final_top1:.2f}"
         ),
-        x=0.02,
-        y=1.01,
-        ha="left",
-        va="bottom",
         fontsize=11.0,
+        top=0.94,
+        x=0.02,
+        ha="left",
     )
     axes["top1"].text(
         0.01,

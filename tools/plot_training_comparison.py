@@ -9,7 +9,7 @@
 - 每个 epoch 的学习率
 
 输出采用 Matplotlib 学术排版，不手工计算子图坐标，默认通过
-`subplot_mosaic(..., constrained_layout=True)` 组织版式。
+`subplot_mosaic(..., layout="constrained")` 组织版式。
 """
 
 from __future__ import annotations
@@ -266,6 +266,24 @@ def apply_style(style_path: Path | None = None) -> None:
         plt.style.use(style_path)
 
 
+def finalize_figure(
+    fig: mpl.figure.Figure,
+    title: str,
+    *,
+    fontsize: float,
+    top: float = 0.955,
+    x: float = 0.02,
+    ha: str = "left",
+) -> None:
+    """为总标题预留独立顶边距，避免与子图标题贴近。"""
+    layout_engine = fig.get_layout_engine()
+    if layout_engine is not None and hasattr(layout_engine, "set"):
+        layout_engine.set(rect=(0.0, 0.0, 1.0, top))
+    else:
+        fig.subplots_adjust(top=top)
+    fig.suptitle(title, x=x, y=0.98, ha=ha, va="top", fontsize=fontsize)
+
+
 def plot_runs(runs: list[RunMetrics], output_dir: Path) -> list[Path]:
     """绘制对比图并导出 PNG/PDF。"""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -277,7 +295,7 @@ def plot_runs(runs: list[RunMetrics], output_dir: Path) -> list[Path]:
         [["loss", "loss"], ["top1", "lr"]],
         figsize=(7.1, 5.2),
         gridspec_kw={"height_ratios": [1.5, 1.0]},
-        constrained_layout=True,
+        layout="constrained",
     )
 
     for idx, run in enumerate(runs):
@@ -353,13 +371,13 @@ def plot_runs(runs: list[RunMetrics], output_dir: Path) -> list[Path]:
     axes["top1"].legend(loc="lower right", handlelength=1.5, fontsize=8.6)
 
     top1_delta = runs[1].eval_top1[-1] - runs[0].eval_top1[-1]
-    fig.suptitle(
+    finalize_figure(
+        fig,
         f"NTU RGB+D xsub: paper LR schedule improves final Top-1 by {top1_delta:+.2f} points",
-        x=0.02,
-        y=1.01,
-        ha="left",
-        va="bottom",
         fontsize=11.2,
+        top=0.94,
+        x=0.02,
+        ha="left",
     )
     axes["loss"].text(
         0.01,

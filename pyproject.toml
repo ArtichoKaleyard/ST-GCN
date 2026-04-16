@@ -17,6 +17,8 @@ dependencies = [
     "herald",
     "matplotlib>=3.10.8",
     "scienceplots>=2.2.1",
+    "markdown>=3.10.2",
+    "weasyprint>=68.1",
 ]
 
 [build-system]

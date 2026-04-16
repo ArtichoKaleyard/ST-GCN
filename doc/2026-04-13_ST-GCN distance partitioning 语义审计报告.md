@@ -30,12 +30,12 @@
 
 本次主要审计以下实现：
 
-- [net/utils/graph.py](../net/utils/graph.py)
-- [net/utils/tgcn.py](../net/utils/tgcn.py)
+- [net/utils/graph.py](./net/utils/graph.py)
+- [net/utils/tgcn.py](./net/utils/tgcn.py)
 
 另外补了一个可重复执行的审计脚本：
 
-- [temp/audit_distance_partition.py](../temp/audit_distance_partition.py)
+- [temp/audit_distance_partition.py](./temp/audit_distance_partition.py)
 
 ## 3. 子集语义检查
 
@@ -74,7 +74,7 @@
 
 ### 5.1 当前实现
 
-当前实现位于 [net/utils/graph.py](../net/utils/graph.py)，核心顺序是：
+当前实现位于 [net/utils/graph.py](./net/utils/graph.py)，核心顺序是：
 
 1. 先构造 `hop <= max_hop` 的整体邻接矩阵
 2. 对整体邻接矩阵做一次 `normalize_digraph`
@@ -156,6 +156,10 @@
 
 这正是本次审计里最可疑的地方。
 
+对应可视化如下。上排是当前实现，下排是 `distance_subsetnorm` 口径；最右一列给出两组子集合并后的总邻接，可以直接看到当前实现下两个 subset 都被整体 degree 一起稀释，而 `subsetnorm` 则把 self 与 hop-1 都抬成了各自独立归一化后的满权重分支。
+
+![Toy graph 下两种 `distance` 归一化口径的矩阵对比](./work_dir/figures/ntu_xsub_distance_semantic_toy_matrices.png)
+
 ## 7. 最小前向测试
 
 本次还做了一个最小前向一致性检查：
@@ -177,7 +181,11 @@
 
 - 当前 `distance` 前向本身没有额外的数值偏置
 - 只要两个 subset 的权重相同，它与 `uniform` 就是严格等价的
-- 因此问题不在 [net/utils/tgcn.py](../net/utils/tgcn.py) 的前向聚合公式本身
+- 因此问题不在 [net/utils/tgcn.py](./net/utils/tgcn.py) 的前向聚合公式本身
+
+这个结论也可以直接从受控前向图里看到：左图采样点几乎完全压在 `y=x` 上，右图的绝对误差分布则收缩在数值精度噪声附近，说明 `distance` 没有因为“多一个 subset”就在前向聚合里引入额外偏置。
+
+![`uniform` 与 `distance` 在受控前向下的输出一致性](./work_dir/figures/ntu_xsub_distance_semantic_forward_equivalence.png)
 
 ## 8. 三类结论
 
@@ -203,7 +211,7 @@
 
 当前最高优先级的修复点就是：
 
-- [net/utils/graph.py](../net/utils/graph.py) 中 `distance` 分支的归一化顺序
+- [net/utils/graph.py](./net/utils/graph.py) 中 `distance` 分支的归一化顺序
 
 建议最小修复方向：
 
@@ -226,7 +234,7 @@
 ### 10.1 修复策略
 
 为了避免直接改写原有 `distance` 语义，本次没有覆盖既有策略，而是在
-[net/utils/graph.py](../net/utils/graph.py) 中新增了一个最小探针策略：
+[net/utils/graph.py](./net/utils/graph.py) 中新增了一个最小探针策略：
 
 - `distance_subsetnorm`
 
@@ -239,7 +247,7 @@
 
 对应探针配置为：
 
-- [config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml](../config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml)
+- [config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml](./config/ablation/ntu-xsub/distance_subsetnorm_probe.yaml)
 
 该配置保持与第一轮消融主协议尽量一致，只把训练长度缩短到 `15 epoch`，用于快速判断修复方向是否值得继续。
 
@@ -269,6 +277,10 @@
 - “先切分、再对子集独立归一化”确实触及了异常来源
 - 但它不是一个“改完后整体单调变好”的修复
 - 更准确的描述是：它改变了 `distance` 的数值平衡方式，使模型前期更激进，但中期明显更稳
+
+把短程探针对照画出来后，这个现象会更直观：上面三张子图保留了原始 `distance_noimp` 的完整 `40 epoch` 轨迹，灰色区域表示“原始基线还在继续，但 probe 已经在 `epoch 14` 停止”；右下角的差值子图只比较两组都真正出现过的公共评估点。因此这里不是“图只画了 15 epoch”，而是明确把“probe 只跑到 15 epoch”这件事编码进图里，同时保留基线后续的异常震荡背景。
+
+![`distance_noimp` 与 `distance_subsetnorm_probe` 的短程验证曲线对比](./work_dir/figures/ntu_xsub_distance_semantic_probe_curves.png)
 
 ## 11. 为什么首点更差，但中期更稳
 
@@ -302,6 +314,10 @@
 
 - self / neighbor 两个分支同强
 
+如果只看这段文字，容易停留在抽象描述；把 NTU 图每个节点上的列和直接展开后就更容易理解。当前实现里，self 列和稳定落在 `0.2 ~ 0.5`，neighbor 落在 `0.5 ~ 0.8`，合并后每列守恒为 `1`；而 `distance_subsetnorm` 则把 self 与 neighbor 两条曲线都抬成了恒定 `1`，合并后每列总权重直接翻到 `2`。
+
+![NTU 图上两种归一化顺序的 self/neighbor 列和分布对比](./work_dir/figures/ntu_xsub_distance_semantic_column_balance.png)
+
 ### 11.2 同权重前向下的尺度变化
 
 为了排除随机初始化噪声，使用完全相同的卷积权重，只替换邻接矩阵 `A` 做了受控前向对比。
@@ -313,6 +329,14 @@
 - 最终 logits 的绝对均值仍约高 `13%`
 
 因此，这个变体并不是“和原始版差不多，只是归一化口径更干净”，而是从第一层开始就持续产生更强的激活。
+
+对应的受控尺度图把这件事拆成了三个层次：
+
+- 左上：最小 `ConvTemporalGraphical` 输出绝对均值直接放大到约 `2.05x`
+- 右上：10 个 ST-GCN block 的激活绝对均值几乎全程高于原始 `distance`
+- 下排：最终 logits 绝对均值仍保持更高，且 block-wise ratio 长期落在 `1.5x ~ 2.0x`
+
+![`distance_subsetnorm` 在受控前向下的尺度放大对比](./work_dir/figures/ntu_xsub_distance_semantic_scale_amplification.png)
 
 ### 11.3 对训练曲线的解释
 
@@ -368,9 +392,38 @@
 
 - `distance partitioning` 的子集切分本身是干净的，support 也守恒，问题不在“边切错了”
 - `ConvTemporalGraphical` 的前向聚合公式没有单独对 `distance` 引入异常偏置
-- 当前实现中最可疑的地方仍是 [net/utils/graph.py](../net/utils/graph.py) 里原始 `distance` 的“先整体归一化，再切分”
+- 当前实现中最可疑的地方仍是 [net/utils/graph.py](./net/utils/graph.py) 里原始 `distance` 的“先整体归一化，再切分”
 - 但把它改成“先切分、再对子集独立归一化”后，带来的不是单一收益，而是一次明显的数值语义变化
 - 这次变化的直接效果是：前期更激进，中期更稳定
 - 因此，`distance_noimp` 的异常不能只被描述为“一个归一化顺序 bug”，更准确的说法应是：
   - 原始 `distance` 的 subset 平衡方式不理想
   - 但真正要做成稳定、可解释的修复，还需要继续约束总消息量与 self / neighbor 的相对权重
+
+## 13. 补充图像产物
+
+本次为语义审计报告补充了 3 张直接服务于结论阅读的对比图：
+
+- Toy graph 归一化语义对比：
+  [work_dir/figures/ntu_xsub_distance_semantic_toy_matrices.png](./work_dir/figures/ntu_xsub_distance_semantic_toy_matrices.png)
+  /
+  [work_dir/figures/ntu_xsub_distance_semantic_toy_matrices.pdf](./work_dir/figures/ntu_xsub_distance_semantic_toy_matrices.pdf)
+- 短程探针对照曲线：
+  [work_dir/figures/ntu_xsub_distance_semantic_probe_curves.png](./work_dir/figures/ntu_xsub_distance_semantic_probe_curves.png)
+  /
+  [work_dir/figures/ntu_xsub_distance_semantic_probe_curves.pdf](./work_dir/figures/ntu_xsub_distance_semantic_probe_curves.pdf)
+- NTU 图列和平衡对比：
+  [work_dir/figures/ntu_xsub_distance_semantic_column_balance.png](./work_dir/figures/ntu_xsub_distance_semantic_column_balance.png)
+  /
+  [work_dir/figures/ntu_xsub_distance_semantic_column_balance.pdf](./work_dir/figures/ntu_xsub_distance_semantic_column_balance.pdf)
+- 最小前向一致性对比：
+  [work_dir/figures/ntu_xsub_distance_semantic_forward_equivalence.png](./work_dir/figures/ntu_xsub_distance_semantic_forward_equivalence.png)
+  /
+  [work_dir/figures/ntu_xsub_distance_semantic_forward_equivalence.pdf](./work_dir/figures/ntu_xsub_distance_semantic_forward_equivalence.pdf)
+- 受控尺度放大对比：
+  [work_dir/figures/ntu_xsub_distance_semantic_scale_amplification.png](./work_dir/figures/ntu_xsub_distance_semantic_scale_amplification.png)
+  /
+  [work_dir/figures/ntu_xsub_distance_semantic_scale_amplification.pdf](./work_dir/figures/ntu_xsub_distance_semantic_scale_amplification.pdf)
+
+对应脚本为：
+
+- [tools/plot_distance_semantic_audit.py](./tools/plot_distance_semantic_audit.py)

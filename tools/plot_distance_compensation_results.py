@@ -341,6 +341,55 @@ def add_stage_guides(ax: mpl.axes.Axes) -> None:
     )
 
 
+def set_padded_ylim(
+    ax: mpl.axes.Axes,
+    series_list: list[list[float] | np.ndarray],
+    *,
+    top_ratio: float = 0.18,
+    bottom_ratio: float = 0.08,
+    min_pad: float = 0.05,
+) -> None:
+    """按数据范围给坐标轴补上下边距，避免说明文字压到曲线。"""
+    values = np.concatenate([np.asarray(series, dtype=float) for series in series_list])
+    y_min = float(np.min(values))
+    y_max = float(np.max(values))
+    span = max(y_max - y_min, min_pad)
+    ax.set_ylim(y_min - span * bottom_ratio, y_max + span * top_ratio)
+
+
+def compute_barh_xlim(
+    values: list[float],
+    *,
+    left_pad: float = 1.4,
+    right_pad: float = 0.9,
+    step: float = 0.5,
+) -> tuple[float, float]:
+    """为横向条形图计算非零起步的局部放大范围。"""
+    value_min = min(values)
+    value_max = max(values)
+    left_bound = np.floor((value_min - left_pad) / step) * step
+    right_bound = np.ceil((value_max + right_pad) / step) * step
+    return float(left_bound), float(right_bound)
+
+
+def finalize_figure(
+    fig: mpl.figure.Figure,
+    title: str,
+    *,
+    fontsize: float,
+    top: float = 0.94,
+    x: float = 0.5,
+    ha: str = "center",
+) -> None:
+    """为总标题预留顶边距，避免与子图标题重叠。"""
+    layout_engine = fig.get_layout_engine()
+    if layout_engine is not None and hasattr(layout_engine, "set"):
+        layout_engine.set(rect=(0.0, 0.0, 1.0, top))
+    else:
+        fig.subplots_adjust(top=top)
+    fig.suptitle(title, x=x, y=0.98, ha=ha, va="top", fontsize=fontsize)
+
+
 def annotate_summary(ax: mpl.axes.Axes, runs: list[ExperimentRun], positions: np.ndarray) -> None:
     """为摘要条形图添加文字。"""
     for pos, run in zip(positions, runs):
@@ -381,7 +430,7 @@ def plot_experiment_results(runs: list[ExperimentRun], output_dir: Path) -> list
         [["top1", "top5"], ["valloss", "summary"]],
         figsize=(10.4, 6.4),
         gridspec_kw={"height_ratios": [1.0, 1.0], "width_ratios": [1.0, 1.0]},
-        constrained_layout=True,
+        layout="constrained",
     )
 
     ordered_runs = runs
@@ -446,8 +495,7 @@ def plot_experiment_results(runs: list[ExperimentRun], output_dir: Path) -> list
     summary_values = [run.best_top1 for run in ordered_runs] + [run.final_top1 for run in ordered_runs]
     summary_min = min(summary_values)
     summary_max = max(summary_values)
-    left_bound = max(0.0, np.floor((summary_min - 1.5) * 2.0) / 2.0)
-    right_bound = np.ceil((summary_max + 0.8) * 2.0) / 2.0
+    left_bound, right_bound = compute_barh_xlim(summary_values, left_pad=1.5, right_pad=0.8)
     axes["summary"].set_xlim(left_bound, right_bound)
     axes["summary"].text(
         0.98,
@@ -460,7 +508,12 @@ def plot_experiment_results(runs: list[ExperimentRun], output_dir: Path) -> list
         color="#666666",
     )
 
-    fig.suptitle("ST-GCN Distance Compensation Experiments", y=1.02, fontsize=11.6)
+    finalize_figure(
+        fig,
+        "ST-GCN Distance Compensation Experiments",
+        fontsize=11.6,
+        top=0.94,
+    )
 
     output_paths = [
         output_dir / "ntu_xsub_distance_compensation_results.png",
@@ -472,10 +525,505 @@ def plot_experiment_results(runs: list[ExperimentRun], output_dir: Path) -> list
     return output_paths
 
 
+def filter_runs_by_keys(runs: list[ExperimentRun], keys: list[str]) -> list[ExperimentRun]:
+    """按 key 顺序筛选实验。"""
+    run_map = {run.key: run for run in runs}
+    return [run_map[key] for key in keys]
+
+
+def plot_stage1_screening(runs: list[ExperimentRun], output_dir: Path) -> list[Path]:
+    """绘制阶段一 20 epoch 筛查图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stage1_runs = filter_runs_by_keys(
+        runs,
+        [
+            "distance_imp_20",
+            "distance_rescaled_noimp_20",
+            "distance_rescaled_imp_20",
+            "spatial_rescaled_noimp_20",
+        ],
+    )
+
+    fig, axes = plt.subplot_mosaic(
+        [["top1", "top5"], ["loss", "summary"]],
+        figsize=(10.0, 6.1),
+        gridspec_kw={"height_ratios": [1.0, 0.95], "width_ratios": [1.0, 1.0]},
+        layout="constrained",
+    )
+
+    for run in stage1_runs:
+        for axis_name, series in (
+            ("top1", run.eval_top1),
+            ("top5", run.eval_top5),
+            ("loss", run.eval_mean_loss),
+        ):
+            axes[axis_name].plot(
+                run.eval_epochs,
+                series,
+                color=run.color,
+                linewidth=1.8,
+                marker=run.marker,
+                markersize=4.2,
+                markerfacecolor="white",
+                markeredgewidth=1.0,
+                label=run.label,
+            )
+
+    for axis_name, title, ylabel in (
+        ("top1", "Stage 1: Validation Top-1", "Accuracy (%)"),
+        ("top5", "Stage 1: Validation Top-5", "Accuracy (%)"),
+        ("loss", "Stage 1: Validation Mean Loss", "Loss"),
+    ):
+        axes[axis_name].set_title(title)
+        axes[axis_name].set_xlabel("Epoch")
+        axes[axis_name].set_ylabel(ylabel)
+        axes[axis_name].set_xticks([5, 10, 15, 20])
+        axes[axis_name].set_xlim(4, 20.8)
+
+    set_padded_ylim(axes["top1"], [run.eval_top1 for run in stage1_runs], top_ratio=0.24)
+    set_padded_ylim(axes["top5"], [run.eval_top5 for run in stage1_runs], top_ratio=0.22)
+    set_padded_ylim(axes["loss"], [run.eval_mean_loss for run in stage1_runs], top_ratio=0.20)
+    axes["top1"].legend(loc="lower right")
+    axes["top5"].legend(loc="lower right")
+    axes["loss"].legend(loc="upper right")
+
+    ordered = sorted(stage1_runs, key=lambda run: run.final_top1, reverse=True)
+    positions = np.arange(len(ordered))
+    axes["summary"].barh(
+        positions,
+        [run.final_top1 for run in ordered],
+        color=[run.color for run in ordered],
+        alpha=0.92,
+    )
+    for pos, run in zip(positions, ordered, strict=True):
+        axes["summary"].text(
+            run.final_top1 + 0.18,
+            pos,
+            f"{run.final_top1:.2f}",
+            va="center",
+            ha="left",
+            fontsize=7.6,
+            color="#4B4B4B",
+        )
+    axes["summary"].set_yticks(positions, [run.label for run in ordered])
+    axes["summary"].invert_yaxis()
+    axes["summary"].set_title("Stage 1 Final Top-1 Ranking")
+    axes["summary"].set_xlabel("Top-1 (%)")
+    summary_left, summary_right = compute_barh_xlim(
+        [run.final_top1 for run in ordered],
+        left_pad=1.4,
+        right_pad=0.9,
+    )
+    axes["summary"].set_xlim(summary_left, summary_right)
+
+    finalize_figure(
+        fig,
+        "Stage 1 Screening: 20-Epoch Comparison",
+        fontsize=11.4,
+        top=0.94,
+    )
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_stage1.png",
+        output_dir / "ntu_xsub_distance_compensation_stage1.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
+def plot_stage2_confirmation(runs: list[ExperimentRun], output_dir: Path) -> list[Path]:
+    """绘制阶段二 40 epoch 确认图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stage2_runs = filter_runs_by_keys(runs, ["distance_imp_40", "distance_rescaled_imp_40"])
+
+    fig, axes = plt.subplots(1, 3, figsize=(10.2, 3.8), layout="constrained")
+    panel_specs = [
+        ("Validation Top-1", "Accuracy (%)", "eval_top1"),
+        ("Validation Top-5", "Accuracy (%)", "eval_top5"),
+        ("Validation Mean Loss", "Loss", "eval_mean_loss"),
+    ]
+
+    for ax, (title, ylabel, attr) in zip(axes, panel_specs, strict=True):
+        for run in stage2_runs:
+            series = getattr(run, attr)
+            ax.plot(
+                run.eval_epochs,
+                series,
+                color=run.color,
+                linewidth=1.9,
+                marker=run.marker,
+                markersize=4.2,
+                markerfacecolor="white",
+                markeredgewidth=1.0,
+                label=run.label,
+            )
+        ax.set_title(title)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel(ylabel)
+        ax.set_xticks([5, 10, 15, 20, 25, 30, 35, 40])
+        ax.set_xlim(4, 40.8)
+        set_padded_ylim(ax, [getattr(run, attr) for run in stage2_runs], top_ratio=0.24)
+
+    axes[0].legend(loc="lower right")
+    axes[2].text(
+        0.98,
+        0.97,
+        "B2 keeps lower validation loss\nfrom epoch 14 onward",
+        transform=axes[2].transAxes,
+        ha="right",
+        va="top",
+        fontsize=7.5,
+        color="#666666",
+    )
+    finalize_figure(
+        fig,
+        "Stage 2 Confirmation: 40-Epoch Head-to-Head",
+        fontsize=11.4,
+        top=0.93,
+    )
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_stage2.png",
+        output_dir / "ntu_xsub_distance_compensation_stage2.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
+def plot_baseline_bridges(runs: list[ExperimentRun], output_dir: Path) -> list[Path]:
+    """绘制与第一轮原始参考基线的桥接对比图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_map = {run.key: run for run in runs}
+
+    baseline_distance_epochs = np.array([5, 10, 15, 20])
+    baseline_distance_top1 = np.array([55.61, 41.18, 43.96, 61.85])
+    baseline_spatial_epochs = np.array([5, 10, 15, 20])
+    baseline_spatial_top1 = np.array([58.85, 67.25, 74.33, 73.26])
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.0, 3.9), layout="constrained")
+
+    distance_runs = [
+        ("Distance / No Imp. baseline", baseline_distance_epochs, baseline_distance_top1, "#5A5A5A", "X"),
+        (
+            run_map["distance_rescaled_noimp_20"].label,
+            np.array(run_map["distance_rescaled_noimp_20"].eval_epochs),
+            np.array(run_map["distance_rescaled_noimp_20"].eval_top1),
+            run_map["distance_rescaled_noimp_20"].color,
+            run_map["distance_rescaled_noimp_20"].marker,
+        ),
+        (
+            run_map["distance_rescaled_imp_20"].label,
+            np.array(run_map["distance_rescaled_imp_20"].eval_epochs),
+            np.array(run_map["distance_rescaled_imp_20"].eval_top1),
+            run_map["distance_rescaled_imp_20"].color,
+            run_map["distance_rescaled_imp_20"].marker,
+        ),
+    ]
+    for label, epochs, series, color, marker in distance_runs:
+        axes[0].plot(
+            epochs,
+            series,
+            color=color,
+            linewidth=1.8,
+            marker=marker,
+            markersize=4.2,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label=label,
+        )
+    axes[0].set_title("Distance Family vs. Original Baseline")
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Top-1 (%)")
+    axes[0].set_xticks([5, 10, 15, 20])
+    axes[0].set_xlim(4, 20.8)
+    set_padded_ylim(axes[0], [series for _, _, series, _, _ in distance_runs], top_ratio=0.24)
+    axes[0].legend(loc="lower right")
+
+    spatial_runs = [
+        ("Spatial / No Imp. baseline", baseline_spatial_epochs, baseline_spatial_top1, "#5A5A5A", "X"),
+        (
+            run_map["spatial_rescaled_noimp_20"].label,
+            np.array(run_map["spatial_rescaled_noimp_20"].eval_epochs),
+            np.array(run_map["spatial_rescaled_noimp_20"].eval_top1),
+            run_map["spatial_rescaled_noimp_20"].color,
+            run_map["spatial_rescaled_noimp_20"].marker,
+        ),
+    ]
+    for label, epochs, series, color, marker in spatial_runs:
+        axes[1].plot(
+            epochs,
+            series,
+            color=color,
+            linewidth=1.8,
+            marker=marker,
+            markersize=4.2,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label=label,
+        )
+    axes[1].set_title("Spatial Family vs. Original Baseline")
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Top-1 (%)")
+    axes[1].set_xticks([5, 10, 15, 20])
+    axes[1].set_xlim(4, 20.8)
+    set_padded_ylim(axes[1], [series for _, _, series, _, _ in spatial_runs], top_ratio=0.24)
+    axes[1].legend(loc="lower right")
+
+    finalize_figure(
+        fig,
+        "Bridge to Round-1 Baselines",
+        fontsize=11.4,
+        top=0.93,
+    )
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_baseline_bridge.png",
+        output_dir / "ntu_xsub_distance_compensation_baseline_bridge.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
+def plot_distance_bridge_focus(runs: list[ExperimentRun], output_dir: Path) -> list[Path]:
+    """绘制只聚焦 distance 家族的桥接图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_map = {run.key: run for run in runs}
+    baseline_epochs = np.array([5, 10, 15, 20])
+    baseline_top1 = np.array([55.61, 41.18, 43.96, 61.85])
+
+    fig, ax = plt.subplots(1, 1, figsize=(5.2, 3.7), layout="constrained")
+    series_specs = [
+        ("Distance / No Imp. baseline", baseline_epochs, baseline_top1, "#5A5A5A", "X"),
+        (
+            run_map["distance_imp_20"].label,
+            np.array(run_map["distance_imp_20"].eval_epochs),
+            np.array(run_map["distance_imp_20"].eval_top1),
+            run_map["distance_imp_20"].color,
+            run_map["distance_imp_20"].marker,
+        ),
+        (
+            run_map["distance_rescaled_noimp_20"].label,
+            np.array(run_map["distance_rescaled_noimp_20"].eval_epochs),
+            np.array(run_map["distance_rescaled_noimp_20"].eval_top1),
+            run_map["distance_rescaled_noimp_20"].color,
+            run_map["distance_rescaled_noimp_20"].marker,
+        ),
+        (
+            run_map["distance_rescaled_imp_20"].label,
+            np.array(run_map["distance_rescaled_imp_20"].eval_epochs),
+            np.array(run_map["distance_rescaled_imp_20"].eval_top1),
+            run_map["distance_rescaled_imp_20"].color,
+            run_map["distance_rescaled_imp_20"].marker,
+        ),
+    ]
+    for label, epochs, values, color, marker in series_specs:
+        ax.plot(
+            epochs,
+            values,
+            color=color,
+            linewidth=1.8,
+            marker=marker,
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label=label,
+        )
+    ax.set_title("Distance Family vs. Original Baseline")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Top-1 (%)")
+    ax.set_xticks([5, 10, 15, 20])
+    ax.set_xlim(4, 20.8)
+    set_padded_ylim(ax, [values for _, _, values, _, _ in series_specs], top_ratio=0.22)
+    ax.legend(loc="lower right", fontsize=7.6)
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_distance_bridge.png",
+        output_dir / "ntu_xsub_distance_compensation_distance_bridge.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
+def plot_spatial_bridge_focus(runs: list[ExperimentRun], output_dir: Path) -> list[Path]:
+    """绘制只聚焦 spatial 家族的桥接图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_map = {run.key: run for run in runs}
+    baseline_epochs = np.array([5, 10, 15, 20])
+    baseline_top1 = np.array([58.85, 67.25, 74.33, 73.26])
+
+    fig, ax = plt.subplots(1, 1, figsize=(5.2, 3.7), layout="constrained")
+    series_specs = [
+        ("Spatial / No Imp. baseline", baseline_epochs, baseline_top1, "#5A5A5A", "X"),
+        (
+            run_map["spatial_rescaled_noimp_20"].label,
+            np.array(run_map["spatial_rescaled_noimp_20"].eval_epochs),
+            np.array(run_map["spatial_rescaled_noimp_20"].eval_top1),
+            run_map["spatial_rescaled_noimp_20"].color,
+            run_map["spatial_rescaled_noimp_20"].marker,
+        ),
+    ]
+    for label, epochs, values, color, marker in series_specs:
+        ax.plot(
+            epochs,
+            values,
+            color=color,
+            linewidth=1.8,
+            marker=marker,
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label=label,
+        )
+    ax.set_title("Spatial Family vs. Original Baseline")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Top-1 (%)")
+    ax.set_xticks([5, 10, 15, 20])
+    ax.set_xlim(4, 20.8)
+    set_padded_ylim(ax, [values for _, _, values, _, _ in series_specs], top_ratio=0.22)
+    ax.legend(loc="lower right", fontsize=7.6)
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_spatial_bridge.png",
+        output_dir / "ntu_xsub_distance_compensation_spatial_bridge.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
+def plot_weight_mask_focus(weight_runs: list[WeightSeries], output_dir: Path) -> list[Path]:
+    """绘制只聚焦 mask_mean 的权重图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fig, axes = plt.subplots(1, 2, figsize=(8.8, 3.5), layout="constrained")
+    subset_colors = {"self": "#A63D40", "neighbor": "#2A6F97"}
+    for idx, run in enumerate(weight_runs):
+        ax = axes[idx]
+        ax.plot(
+            run.layers,
+            run.self_mask_mean,
+            color=subset_colors["self"],
+            linewidth=1.8,
+            marker="o",
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label="self mask",
+        )
+        ax.plot(
+            run.layers,
+            run.neighbor_mask_mean,
+            color=subset_colors["neighbor"],
+            linewidth=1.8,
+            marker="s",
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label="neighbor mask",
+        )
+        ax.set_title(run.label)
+        ax.set_xlabel("Layer")
+        ax.set_ylabel("Mask Mean")
+        ax.set_xticks(run.layers)
+        ax.set_ylim(0.47, 0.53)
+        ax.text(
+            0.03,
+            0.97,
+            f"mean ratio = {np.mean(run.self_over_neighbor_mask):.3f}",
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=7.4,
+            color="#666666",
+        )
+    axes[0].legend(loc="lower right")
+    finalize_figure(fig, "Mask Mean Comparison", fontsize=11.0, top=0.94)
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_mask_focus.png",
+        output_dir / "ntu_xsub_distance_compensation_mask_focus.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
+def plot_weight_aeff_focus(weight_runs: list[WeightSeries], output_dir: Path) -> list[Path]:
+    """绘制只聚焦有效邻接强度的权重图。"""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fig, axes = plt.subplots(1, 2, figsize=(8.8, 3.7), layout="constrained")
+    subset_colors = {"self": "#A63D40", "neighbor": "#2A6F97"}
+    ratio_colors = ["#7A3B69", "#206A5D"]
+    for idx, run in enumerate(weight_runs):
+        ax = axes[idx]
+        ax.plot(
+            run.layers,
+            run.self_colsum_mean,
+            color=subset_colors["self"],
+            linewidth=1.9,
+            marker="o",
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label="self $A_{eff}$",
+        )
+        ax.plot(
+            run.layers,
+            run.neighbor_colsum_mean,
+            color=subset_colors["neighbor"],
+            linewidth=1.9,
+            marker="s",
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=1.0,
+            label="neighbor $A_{eff}$",
+        )
+        ax.plot(
+            run.layers,
+            run.self_over_neighbor_colsum,
+            color=ratio_colors[idx],
+            linewidth=1.7,
+            linestyle="--",
+            marker="^",
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgewidth=0.95,
+            label="self / neighbor ratio",
+        )
+        ax.axhline(1.0, color="#888888", linewidth=1.0, linestyle=":")
+        ax.set_title(run.label)
+        ax.set_xlabel("Layer")
+        ax.set_ylabel("Strength")
+        ax.set_xticks(run.layers)
+        ax.text(
+            0.03,
+            0.97,
+            f"mean ratio = {np.mean(run.self_over_neighbor_colsum):.3f}",
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=7.4,
+            color="#666666",
+        )
+    axes[1].legend(loc="upper right")
+    finalize_figure(fig, "Effective Adjacency Strength Comparison", fontsize=11.0, top=0.94)
+    output_paths = [
+        output_dir / "ntu_xsub_distance_compensation_aeff_focus.png",
+        output_dir / "ntu_xsub_distance_compensation_aeff_focus.pdf",
+    ]
+    for path in output_paths:
+        fig.savefig(path)
+    plt.close(fig)
+    return output_paths
+
+
 def plot_weight_analysis(weight_runs: list[WeightSeries], output_dir: Path) -> list[Path]:
     """绘制有效邻接权重分析图。"""
     output_dir.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(2, 2, figsize=(9.1, 6.5), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(9.1, 6.5), layout="constrained")
 
     subset_colors = {"self": "#A63D40", "neighbor": "#2A6F97"}
     ratio_colors = ["#7A3B69", "#206A5D"]
@@ -575,7 +1123,12 @@ def plot_weight_analysis(weight_runs: list[WeightSeries], output_dir: Path) -> l
             color="#666666",
         )
 
-    fig.suptitle("Effective Adjacency Analysis for Distance + Importance", y=1.02, fontsize=11.6)
+    finalize_figure(
+        fig,
+        "Effective Adjacency Analysis for Distance + Importance",
+        fontsize=11.6,
+        top=0.94,
+    )
     output_paths = [
         output_dir / "ntu_xsub_distance_compensation_weights.png",
         output_dir / "ntu_xsub_distance_compensation_weights.pdf",
@@ -594,6 +1147,11 @@ def main() -> None:
     run_specs = build_run_specs()
     runs = [parse_run(spec) for spec in run_specs]
     result_paths = plot_experiment_results(runs, args.output_dir)
+    stage1_paths = plot_stage1_screening(runs, args.output_dir)
+    stage2_paths = plot_stage2_confirmation(runs, args.output_dir)
+    baseline_bridge_paths = plot_baseline_bridges(runs, args.output_dir)
+    distance_bridge_focus_paths = plot_distance_bridge_focus(runs, args.output_dir)
+    spatial_bridge_focus_paths = plot_spatial_bridge_focus(runs, args.output_dir)
 
     root = ROOT_DIR / "work_dir" / "ablation" / "ntu-xsub"
     weight_runs = [
@@ -612,8 +1170,20 @@ def main() -> None:
         ),
     ]
     weight_paths = plot_weight_analysis(weight_runs, args.output_dir)
+    mask_focus_paths = plot_weight_mask_focus(weight_runs, args.output_dir)
+    aeff_focus_paths = plot_weight_aeff_focus(weight_runs, args.output_dir)
 
-    for path in [*result_paths, *weight_paths]:
+    for path in [
+        *result_paths,
+        *stage1_paths,
+        *stage2_paths,
+        *baseline_bridge_paths,
+        *distance_bridge_focus_paths,
+        *spatial_bridge_focus_paths,
+        *weight_paths,
+        *mask_focus_paths,
+        *aeff_focus_paths,
+    ]:
         print(path)
 
 
